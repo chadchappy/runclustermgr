@@ -38,8 +38,8 @@ The application can be configured using the following environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RUNAI_CONTROL_PLANE` | Run:ai control plane URL (without https://) | `runai.example.com` |
-| `RUNAI_APP_NAME` | Run:ai application name | `your-app-name` |
-| `RUNAI_APP_SECRET` | Run:ai application secret | `REDACTED` |
+| `RUNAI_APP_NAME` | Run:ai application name | `<APPNAME>` |
+| `RUNAI_APP_SECRET` | Run:ai application secret | `<APPSECRET>` |
 
 ### Updating Configuration
 
