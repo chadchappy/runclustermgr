@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Run:ai Cluster Manager
 
 A comprehensive web application for managing NVIDIA Run:ai clusters with intelligent load balancing, real-time GPU monitoring, and distributed training support.
@@ -468,3 +469,4 @@ For issues with deployment:
 2. Verify configuration: `./scripts/update-config.sh show`
 3. Test connectivity: `kubectl port-forward service/runai-app 3000:3000`
 4. Check health endpoint: `curl http://localhost:3000/health`
+
