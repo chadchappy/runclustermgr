@@ -312,8 +312,8 @@ The application can be configured using the following environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RUNAI_CONTROL_PLANE` | Run:ai control plane hostname | `runai.example.com` |
-| `RUNAI_APP_NAME` | Application name for authentication | `your-app-name` |
-| `RUNAI_APP_SECRET` | Application secret for authentication | `REDACTED` |
+| `RUNAI_APP_NAME` | Application name for authentication | `<APPNAME>` |
+| `RUNAI_APP_SECRET` | Application secret for authentication | `<APPSECRET>` |
 
 ### Updating Configuration
 
