@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # Run:ai Cluster Manager
 
 A comprehensive web application for managing NVIDIA Run:ai clusters with intelligent load balancing, real-time GPU monitoring, and distributed training support.
