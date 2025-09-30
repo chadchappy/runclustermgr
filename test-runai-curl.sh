@@ -30,6 +30,7 @@ echo ""
 echo "2️⃣ Testing authentication endpoints..."
 
 AUTH_ENDPOINTS=(
+    "/auth/realms/runai/protocol/openid-connect/token"
     "/oauth2/token"
     "/oauth/token" 
     "/auth/token"

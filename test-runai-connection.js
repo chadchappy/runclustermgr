@@ -38,6 +38,7 @@ async function testRunaiConnection() {
     
     // Try common OAuth2 endpoints
     const authEndpoints = [
+      '/auth/realms/runai/protocol/openid-connect/token',
       '/oauth2/token',
       '/oauth/token',
       '/auth/token',

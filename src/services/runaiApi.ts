@@ -68,10 +68,10 @@ class RunaiApiClient {
   async authenticate(): Promise<boolean> {
     try {
       if (this.config.development.enableDebugLogs) {
-        console.log('Authenticating with Run:ai cluster:', this.authConfig.endpoint);
+        console.log('Authenticating with Run:ai cluster via proxy');
       }
 
-      // Use Keycloak OpenID Connect authentication
+      // Use Keycloak OpenID Connect authentication through nginx proxy
       const authData = {
         grant_type: this.config.auth.grantType,
         client_id: this.authConfig.clientId,
@@ -81,7 +81,7 @@ class RunaiApiClient {
       const apiEndpoints = getApiEndpoints();
 
       if (this.config.development.enableDebugLogs) {
-        console.log('Authenticating with Keycloak endpoint:', apiEndpoints.auth.token);
+        console.log('Auth endpoint:', apiEndpoints.auth.token);
         console.log('Auth data:', { ...authData, client_secret: '[REDACTED]' });
       }
 
@@ -96,18 +96,14 @@ class RunaiApiClient {
         }],
       });
 
-      // Handle different token response formats
       const token = response.data.access_token || response.data.token;
       if (token) {
         this.authConfig.token = token;
-
-        // Calculate expiration time
-        const expiresIn = response.data.expires_in || 3600; // Default 1 hour
+        const expiresIn = response.data.expires_in || 3600;
         this.authConfig.expiresAt = new Date(Date.now() + (expiresIn * 1000)).toISOString();
 
         if (this.config.development.enableDebugLogs) {
-          console.log('Authentication successful, token expires at:', this.authConfig.expiresAt);
-          console.log('Token response:', response.data);
+          console.log('Authentication successful via proxy');
         }
 
         return true;
@@ -116,6 +112,8 @@ class RunaiApiClient {
       throw new Error('No access token received');
     } catch (error: any) {
       console.error('Authentication failed:', error);
+      console.error('Response data:', error.response?.data);
+      console.error('Response status:', error.response?.status);
 
       if (error.response?.status === 401) {
         throw new Error(ERROR_MESSAGES.auth.invalidCredentials);
@@ -126,7 +124,9 @@ class RunaiApiClient {
       throw new Error(error.message || ERROR_MESSAGES.general.unknownError);
     }
   }
-
+  private getAuthEndpoint(): string {
+    return `${this.config.clusters[0].url}/auth/realms/runai/protocol/openid-connect/token`;
+  }
   private async refreshToken(): Promise<void> {
     console.log('[RunaiApiClient] Token expired, re-authenticating with client credentials...');
 

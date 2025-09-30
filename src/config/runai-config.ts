@@ -29,6 +29,8 @@ export const RUNAI_CONFIG = {
     timeout: 30000,
     retryAttempts: 3,
     retryDelay: 1000,
+    authEndpoint: '/auth/realms/runai/protocol/openid-connect/token',
+    baseEndpoint: '/api/v1',
     baseHeaders: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',

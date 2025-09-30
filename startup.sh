@@ -7,7 +7,6 @@ echo "🚀 Starting Run:ai Application Container..."
 export RUNAI_CONTROL_PLANE=${RUNAI_CONTROL_PLANE:-"runai.example.com"}
 export RUNAI_APP_NAME=${RUNAI_APP_NAME:-"your-app-name"}
 export RUNAI_APP_SECRET=${RUNAI_APP_SECRET:-"REDACTED"}
-
 echo "📡 Control Plane: ${RUNAI_CONTROL_PLANE}"
 echo "🔑 App Name: ${RUNAI_APP_NAME}"
 echo "🔐 App Secret: [REDACTED]"

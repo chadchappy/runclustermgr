@@ -15,12 +15,16 @@ export RUNAI_APP_SECRET=${RUNAI_APP_SECRET:-"REDACTED"}
 echo "📡 Control Plane: ${RUNAI_CONTROL_PLANE}"
 echo "🔑 App Name: ${RUNAI_APP_NAME}"
 echo "🔐 App Secret: [REDACTED]"
+echo "🔧 Configuring nginx with environment variables..."
+echo "📡 Control Plane: ${RUNAI_CONTROL_PLANE}"
+echo "🔑 App Name: ${RUNAI_APP_NAME}"
 
 # Substitute environment variables in nginx config
-echo "🔧 Configuring nginx with environment variables..."
-envsubst '${RUNAI_CONTROL_PLANE}' < /etc/nginx/nginx.conf > /tmp/nginx.conf
-mv /tmp/nginx.conf /etc/nginx/nginx.conf
+envsubst '${RUNAI_CONTROL_PLANE}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
+# Verify the substitution worked
+echo "🔍 Nginx config after substitution:"
+grep -A 5 -B 5 "proxy_pass" /etc/nginx/nginx.conf || echo "No proxy_pass found in config"
 # Create runtime configuration for React app
 echo "⚛️  Creating runtime configuration for React app..."
 cat > /usr/share/nginx/html/config.js << EOF
