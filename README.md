@@ -1,7 +1,13 @@
-
 # Run:ai Cluster Manager
 
-A comprehensive web application for managing NVIDIA Run:ai clusters with intelligent load balancing, real-time GPU monitoring, and distributed training support.
+A web application for managing Run:ai clusters, jobs, and resources.
+
+## 🆕 Version 2.23 Compatibility
+
+This application has been updated for compatibility with Run:ai v2.23:
+- Updated authentication endpoints for Keycloak integration
+- Enhanced proxy configuration for proper API routing
+- Verified working deployment with latest Run:ai version
 
 ## 🚀 Features
 
