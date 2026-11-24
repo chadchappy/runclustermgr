@@ -47,7 +47,7 @@ function send(res, status, body, headers = {}) {
   res.end(isStr ? body : JSON.stringify(body));
 }
 
-export function createApp({ manager, config, version = '2.1.0', log = () => {} }) {
+export function createApp({ manager, config, version = '2.1.1', log = () => {} }) {
   async function api(req, res, url) {
     const { pathname } = url;
     if (req.method === 'GET' && pathname === '/api/config') {

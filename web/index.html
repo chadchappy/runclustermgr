@@ -46,9 +46,13 @@
           <label><input type="radio" name="type" value="inference"><span>Inference</span></label>
         </div>
 
-        <div class="field">
-          <span class="lbl">Place on</span>
-          <div class="seg dyn" id="placeOn" role="radiogroup" aria-label="Cluster to run on"></div>
+        <div class="field placebox">
+          <label class="switch">
+            <input type="checkbox" id="auto" checked>
+            <span class="track" aria-hidden="true"></span>
+            <span class="switchtext"><b>Schedule automatically</b><small id="autoSub">Runs on the cluster with the most free GPUs</small></span>
+          </label>
+          <div class="seg dyn" id="placeOn" role="radiogroup" aria-label="Choose a cluster"></div>
           <small class="hint" id="placeHint"></small>
         </div>
 

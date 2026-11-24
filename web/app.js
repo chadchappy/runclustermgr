@@ -45,14 +45,17 @@ function setPinned(id) {
 
 function renderPlaceOn() {
   const root = $('#placeOn');
-  const mk = (id, label, disabled) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(state.pinned === id), disabled, 'data-id': id }, label);
-  root.replaceChildren(
-    mk('', 'Automatic', false),
-    ...state.clusters.map((c) => mk(c.id, c.name, !c.connected)));
+  const auto = state.pinned === '';
+  $('#auto').checked = auto;
+  $('.placebox').classList.toggle('auto', auto);
+  root.replaceChildren(...state.clusters.map((c) =>
+    h('button', { type: 'button', role: 'radio', 'aria-checked': String(state.pinned === c.id), disabled: !c.connected, 'data-id': c.id }, c.name)));
   const best = state.preview?.ranked?.find((r) => r.clusterId === state.preview.chosen);
-  $('#placeHint').textContent = state.pinned
-    ? 'You chose the cluster. Select Automatic to use the one with the most free GPUs.'
-    : best ? `Automatic picks the cluster with the most free GPUs (currently ${best.name}).` : 'Automatic picks the cluster with the most free GPUs.';
+  const chosen = state.clusters.find((c) => c.id === state.pinned);
+  $('#autoSub').textContent = auto
+    ? (best ? `Runs on the cluster with the most free GPUs (right now: ${best.name})` : 'Runs on the cluster with the most free GPUs')
+    : `Off. Running on ${chosen ? chosen.name : 'the cluster you pick'}`;
+  $('#placeHint').textContent = auto ? 'Pick a cluster below to choose one yourself.' : 'Turn on Schedule automatically to let the app choose.';
 }
 
 // ---------- clusters ----------
@@ -75,7 +78,7 @@ function renderClusters() {
       tabindex: c.connected ? '0' : null,
       role: c.connected ? 'button' : null,
       'aria-pressed': c.connected ? String(isPinned) : null,
-      title: c.connected ? (isPinned ? 'Click to go back to automatic placement' : `Click to place workloads on ${c.name}`) : null,
+      title: c.connected ? (isPinned ? 'Click to schedule automatically again' : `Click to place workloads on ${c.name}`) : null,
     },
       h('div', { class: 'card-head' },
         h('h3', {}, c.name),
@@ -240,12 +243,12 @@ async function onSubmit(ev) {
     const chosen = p.ranked?.find((r) => r.clusterId === p.chosen);
     const link = state.config?.controlPlane && !state.config.mock ? h('a', { href: `https://${state.config.controlPlane}/workloads`, target: '_blank', rel: 'noopener' }, 'Open in Run:ai') : null;
     result.className = 'result';
-    result.replaceChildren(
-      h('div', {}, h('b', {}, `Submitted to ${p.chosenName}`), state.pinned ? ' (your choice)' : ' (most open)', p.queued ? ' — waiting for GPUs (queued)' : ''),
+    result.replaceChildren(...[
+      h('div', {}, h('b', {}, `Submitted to ${p.chosenName}`), state.pinned ? ' (chosen by you)' : ' (scheduled automatically)', p.queued ? ' — waiting for GPUs (queued)' : ''),
       h('div', { class: 'muted' }, `${req.name} · ${out.workload?.workloadId || ''}`,
         chosen?.createsProject ? ` · created project "${req.project}" on ${p.chosenName}` : '',
         p.attempts?.length ? ` · fell back from ${p.attempts.map((a) => a.clusterName).join(', ')}` : ''),
-      link ? h('div', {}, link) : null);
+      link ? h('div', {}, link) : null].filter(Boolean));
     result.hidden = false;
     form.elements.name.value = newName();
     await Promise.all([refresh({ force: true }), loadProjects()]);
@@ -320,7 +323,17 @@ async function init() {
   $('#placeOn').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b || b.disabled) return;
-    state.pinned = b.dataset.id;
+    state.pinned = b.dataset.id; // choosing a cluster turns automatic scheduling off
+    renderPlaceOn(); renderClusters(); schedulePreview();
+  });
+  $('#auto').addEventListener('change', (e) => {
+    if (e.target.checked) state.pinned = '';
+    else {
+      // switching off: start from the cluster automatic would have used
+      const best = state.preview?.chosen;
+      const fallback = state.clusters.find((c) => c.connected)?.id || '';
+      state.pinned = best || fallback;
+    }
     renderPlaceOn(); renderClusters(); schedulePreview();
   });
   form.elements.name.value = newName();

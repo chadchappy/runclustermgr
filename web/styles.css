@@ -131,3 +131,16 @@ tr:last-child td { border-bottom: 0; }
 .card.rec.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
 .pill.sel { background: var(--info); color: #fff; }
 .pill.best { background: var(--accent-soft); color: var(--text); border: 1px solid var(--accent); }
+
+.placebox { gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.switch { display: flex; align-items: center; gap: 12px; cursor: pointer; color: var(--text); font-size: 14px; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch .track { flex: none; width: 40px; height: 22px; border-radius: 99px; background: var(--line); position: relative; transition: background .15s; }
+.switch .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(18px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switchtext { display: grid; gap: 1px; }
+.switchtext small { color: var(--muted); font-size: 12.5px; }
+.placebox .seg.dyn { background: var(--panel); margin: 0; }
+.placebox.auto .seg.dyn { opacity: .55; }
