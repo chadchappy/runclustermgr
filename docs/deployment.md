@@ -12,7 +12,7 @@
 ## 2. Build and publish the image
 
 ```bash
-docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:2.2.3 --push .
+docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:2.3.2 --push .
 ```
 
 Use `linux/amd64,linux/arm64` for mixed fleets. Tags should be immutable: bump the version for every release rather than reusing `latest`. Pushing a `v*` git tag runs the same build in CI and publishes to `ghcr.io/<owner>/<repo>`.
@@ -48,6 +48,8 @@ cp environments/example.env environments/<name>.env
 | `NO_FIT_STRATEGY` | no | `queue` (default) or `reject` |
 | `EXCLUDE_CLUSTERS` | no | Comma list of cluster names/UUIDs never to place on |
 | `ALLOW_UNKNOWN_CAPACITY` | no | Treat clusters with unknown GPU availability as available (default `false`) |
+| `USAGE_SOURCE` | no | `workloads` (default), `max` or `telemetry`: how GPU usage is measured (see README, "How fresh the numbers are") |
+| `CAPACITY_TTL_MS` | no | Server-side capacity cache in ms (default 4000) |
 | `AUTO_CREATE_PROJECTS` | no | `true` = create a matching project on a cluster that lacks the chosen one, so any project works on any cluster. Needs project-create rights in Run:ai (default `false`) |
 | `MOCK` | no | `1` = built-in demo data, no Run:ai calls |
 

@@ -565,7 +565,7 @@ async function init() {
 
   await refresh();
   runPreview();
-  setInterval(() => { if (!document.hidden) refresh(); }, 15000);
+  setInterval(() => { if (!document.hidden) refresh(); }, 5000); // live: re-read every 5 s while the tab is visible
   setInterval(() => { if (state.lastUpdate && !state.loadError) $('#liveText').textContent = `Updated ${ago(state.lastUpdate)}`; }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 }

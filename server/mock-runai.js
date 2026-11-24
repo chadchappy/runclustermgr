@@ -125,7 +125,17 @@ export function createMockRunai({
     }
 
     if (path === '/api/v1/workloads' && method === 'GET') {
-      let list = [...state.workloads].reverse();
+      let list = state.hideWorkloadList ? [] : [...state.workloads].reverse(); // hideWorkloadList simulates control-plane lag
+      // GPUs held by load that no mock workload explains (what `cluster.allocated` was set to directly) are
+      // listed as a "background" workload in the Initializing phase (a GPU-holding phase that is not counted
+      // as running). state.hideBackground = true simulates usage Run:ai workloads do not show (non-Run:ai pods).
+      if (!state.hideWorkloadList && !state.hideBackground && u.searchParams.getAll('filterBy').includes('phase==Initializing')) {
+        for (const c of state.clusters) {
+          const explained = state.workloads.filter((w) => w.clusterId === c.uuid && w.phase === 'Running').reduce((a, w) => a + (w.allocatedResources?.gpu || 0), 0);
+          const bg = c.pools ? 0 : Math.max(0, c.allocated - explained);
+          if (bg > 0) list.push({ id: `bg-${c.uuid}`, name: 'background', clusterId: c.uuid, phase: 'Initializing', allocatedResources: { gpu: bg } });
+        }
+      }
       for (const f of u.searchParams.getAll('filterBy')) {
         const m = /^phase==(.+)$/.exec(f);
         if (m) list = list.filter((w) => w.phase === m[1]);

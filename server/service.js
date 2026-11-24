@@ -20,14 +20,23 @@ export class ClusterManager {
     this.reservations = new Reservations(config.reservationTtlMs, now);
     this.cache = null;
     this.inflight = null;
+    this.projectsCache = null; // { at, list }: projects change rarely, capacity changes constantly
+    this.workloadsCache = null;
     this.decisions = [];
   }
 
   async snapshot({ maxAgeMs = this.config.capacityTtlMs } = {}) {
-    if (this.cache && this.now() - this.cache.collectedAt <= maxAgeMs) return this.cache;
+    if (this.cache && this.now() - this.cache.collectedAt < maxAgeMs) return this.cache; // maxAgeMs 0 always re-reads
     if (this.inflight) return this.inflight;
-    this.inflight = collectSnapshot(this.client, { now: this.now })
-      .then((s) => { this.cache = s; return s; })
+    const PROJECTS_TTL_MS = 60000;
+    const useCachedProjects = this.projectsCache && this.now() - this.projectsCache.at < PROJECTS_TTL_MS;
+    this.inflight = collectSnapshot(this.client, { now: this.now, usageSource: this.config.usageSource || 'workloads', projects: useCachedProjects ? this.projectsCache.list : undefined })
+      .then((s) => {
+        this.cache = s;
+        if (!useCachedProjects && s.projectsList) this.projectsCache = { at: this.now(), list: s.projectsList };
+        this.reservations.settle(s.accountedWorkloadIds); // once Run:ai accounts for a workload's GPUs the reservation would double-count
+        return s;
+      })
       .finally(() => { this.inflight = null; });
     return this.inflight;
   }
@@ -85,7 +94,7 @@ export class ClusterManager {
     if (errors.length) throw new HttpError(400, 'Invalid workload request', errors);
 
     // Decisions are made on fresh data.
-    const snap = await this.snapshot({ maxAgeMs: 3000 });
+    const snap = await this.snapshot({ maxAgeMs: 2000 });
     const demand = gpuDemand(request);
     const decision = this._rank(snap, request);
     if (!decision.chosen) throw new HttpError(409, decision.message, decision.ranked);
@@ -111,6 +120,8 @@ export class ClusterManager {
         // /api/v2/workloads answers { metadata: { id, name, ... } }; v1 endpoints answer the workload itself
         const created = raw?.metadata ? { ...raw, workloadId: raw.metadata.id, name: raw.metadata.name, clusterId: raw.metadata.clusterId } : raw;
         this.cache = null; // next read reflects the new workload
+        this.workloadsCache = null;
+        if (created?.workloadId || created?.id) this.reservations.attach(clusterId, demand, created.workloadId || created.id);
         const rec = {
           time: new Date(this.now()).toISOString(),
           name: request.name || created?.name || null, type: request.type, project: request.project, gpus: demand,
@@ -161,12 +172,13 @@ export class ClusterManager {
       if (e instanceof RunaiError && e.status === 409) {
         // created concurrently (or we raced a stale cache): look it up
         const found = (await this.client.list('/api/v1/org-unit/projects', 'projects')).find((p) => p.clusterId === cluster.id && p.name === name);
-        if (found) { this.cache = null; return { id: found.id, name }; }
+        if (found) { this.cache = null; this.projectsCache = null; return { id: found.id, name }; }
       }
       const status = e instanceof RunaiError && e.status >= 400 && e.status < 500 ? e.status : 502;
       throw new HttpError(status, `Could not create project "${name}" on ${cluster.name}: ${e.message}`);
     }
     this.cache = null;
+    this.projectsCache = null;
     this.log({ event: 'project_created', cluster: cluster.name, project: name, id: created?.id });
     await this._waitProjectReady(cluster.id, name);
     return { id: created.id, name };
@@ -194,10 +206,12 @@ export class ClusterManager {
   }
 
   async workloads(limit = 25) {
-    const [list, snap] = await Promise.all([
-      this.client.get('/api/v1/workloads', { limit, sortBy: 'createdAt', sortOrder: 'desc' }),
-      this.snapshot(),
-    ]);
+    // short cache: several browsers polling every few seconds should cost one Run:ai call
+    if (!this.workloadsCache || this.now() - this.workloadsCache.at > 3000 || this.workloadsCache.limit !== limit) {
+      this.workloadsCache = { at: this.now(), limit, promise: this.client.get('/api/v1/workloads', { limit, sortBy: 'createdAt', sortOrder: 'desc' }) };
+      this.workloadsCache.promise.catch(() => { this.workloadsCache = null; });
+    }
+    const [list, snap] = await Promise.all([this.workloadsCache.promise, this.snapshot()]);
     const names = Object.fromEntries(snap.clusters.map((c) => [c.id, c.name]));
     const items = Array.isArray(list) ? list : list?.workloads || [];
     return items.map((w) => ({

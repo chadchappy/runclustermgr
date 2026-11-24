@@ -32,6 +32,14 @@ Both are checked as you type. Errors name the line and column, are marked in the
 
 Regenerate the CLI model after upgrading the CLI: `node scripts/gen-cli-spec.mjs` then `npm test`.
 
+## How fresh the numbers are
+
+The page re-reads every **5 seconds** while the tab is visible, and the server reuses a reading for 4 seconds, so any number of browsers costs Run:ai one set of calls per 4 s (projects are re-read once a minute).
+
+GPU usage comes from the **workload list**, not from Run:ai's GPU telemetry. Measured against a real control plane, telemetry lags 35 s to 60 s in both directions and its figures can disagree with each other (24 allocated plus 16 free on a 32-GPU cluster), while workload state is current within seconds. A workload counts while it is Running, while it starts up (Initializing, Creating), and while it shuts down (Deleting, Stopping) only as long as its pods still run. Telemetry is used for the cluster totals and as a fallback if the workload list cannot be read. If you also run GPU pods Run:ai does not manage and want them counted, set `USAGE_SOURCE=max`.
+
+Between submitting and Run:ai listing a workload, its GPUs are reserved so a burst of submissions does not pile onto one cluster; the reservation is dropped as soon as the workload appears, so nothing is counted twice.
+
 ## How placement works
 
 A cluster is **eligible** if it is connected, the project exists on it (or `AUTO_CREATE_PROJECTS` is on), it is not excluded by policy, and the request does not exceed the project's GPU limit there. Eligible clusters are ranked by:
@@ -72,7 +80,8 @@ Create the application in Run:ai under *Settings → Access → Applications*. I
 | `EXCLUDE_CLUSTERS` | | comma list of cluster names/uuids never to use |
 | `ALLOW_UNKNOWN_CAPACITY` | `false` | treat clusters with unknown GPU availability as available |
 | `AUTO_CREATE_PROJECTS` | `false` | use any project on any cluster: create a matching project (no guaranteed quota) on a cluster that lacks it |
-| `CAPACITY_TTL_MS` | `15000` | telemetry cache |
+| `CAPACITY_TTL_MS` | `4000` | how long a capacity reading is reused before Run:ai is asked again |
+| `USAGE_SOURCE` | `workloads` | how GPU usage is measured: `workloads` (GPUs held by workloads, reflects changes in seconds), `max` (larger of workloads and telemetry), `telemetry` (metrics only) |
 | `RESERVATION_TTL_MS` | `90000` | how long a submission reserves GPUs |
 | `PORT` | `3000` | |
 

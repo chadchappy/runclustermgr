@@ -22,7 +22,8 @@ The manager is stateless apart from a 15 s capacity cache, a list of recent deci
 | Need | API |
 |---|---|
 | Clusters, connection state | `GET /api/v1/clusters` (`status.state == Connected`) |
-| Free/total/allocated/ready GPUs per cluster | `GET /api/v1/nodes/telemetry?telemetryType=FREE_GPUS\|TOTAL_GPUS\|ALLOCATED_GPUS\|READY_GPUS&groupBy=ClusterId` |
+| Total GPUs per cluster | `GET /api/v1/nodes/telemetry?telemetryType=TOTAL_GPUS&groupBy=ClusterId` |
+| GPUs in use per cluster | `GET /api/v1/workloads?filterBy=phase==<Running\|Initializing\|Creating\|Resuming\|Updating\|Deleting\|Stopping>`, summing `allocatedResources.gpu` (telemetry `ALLOCATED_GPUS`/`FREE_GPUS` only as a fallback or with `USAGE_SOURCE=max`) |
 | Which cluster has your project, and its GPU quota | `GET /api/v1/org-unit/projects` |
 | Pending / running counts | `GET /api/v1/workloads?filterBy=phase==Pending` (and `Running`) |
 | Recent workloads | `GET /api/v1/workloads` |
@@ -31,6 +32,24 @@ The manager is stateless apart from a 15 s capacity cache, a list of recent deci
 | Auth | `POST /api/v1/token` with `grantType: client_credentials` |
 
 Any value the API does not return is `null` ("unknown") and the UI shows `—`. Placement treats unknown capacity as "cannot verify" and will not call it a fit.
+
+## Freshness and how usage is measured
+
+Observed on a real 3.0 control plane, with a 0.5-GPU workload that is created and then deleted:
+
+| Moment | Workload state | Telemetry `ALLOCATED_GPUS` |
+|---|---|---|
+| create +0.4 s | listed Running, GPU held | unchanged |
+| create +36 s | | now shows it |
+| delete +1 s | `Deleting`, pod running, GPU held | unchanged |
+| delete +6 s | `Deleting`, **pods 0**: GPU free | unchanged |
+| delete +28 s | `allocatedResources` still 0.5 | momentarily 1.0 |
+| delete +36 s | `allocatedResources` cleared | still 1.0 |
+| delete +58 s | | back to baseline |
+
+Telemetry lags in both directions and is internally inconsistent, so usage is computed from workload state: sum of `allocatedResources.gpu` over workloads in GPU-holding phases, where `Deleting` and `Stopping` count only while `runningPods > 0`. `free = total - in use`. `USAGE_SOURCE=max` takes the larger of workloads and telemetry (never under-reports, lags when workloads end); `telemetry` uses the metrics only. In-flight submissions are reserved until Run:ai lists them (matched by workload id), then the reservation is dropped.
+
+Cadence: browser every 5 s (paused while hidden); server capacity cache 4 s (`CAPACITY_TTL_MS`), projects 60 s, workload list 3 s; concurrent requests share one in-flight read.
 
 ## Placement
 

@@ -79,7 +79,8 @@ test('a burst of submissions is spread out by in-flight reservations (telemetry 
     { uuid: 'a', name: 'alpha', state: 'Connected', total: 16, allocated: 8 },
     { uuid: 'b', name: 'beta', state: 'Connected', total: 16, allocated: 8 },
   ] } });
-  // Hold the mock's allocation constant to simulate stale telemetry.
+  // Simulate Run:ai lagging: telemetry stays at the old value and the workload list has not caught up yet.
+  t.mock.state.hideWorkloadList = true;
   const orig = t.mock.fetch;
   const results = [];
   for (let i = 0; i < 4; i++) {

@@ -58,7 +58,7 @@ function resolveBody(body) {
   return body;
 }
 
-export function createApp({ manager, config, version = '2.2.3', log = () => {} }) {
+export function createApp({ manager, config, version = '2.3.2', log = () => {} }) {
   async function api(req, res, url) {
     const { pathname } = url;
     if (req.method === 'GET' && pathname === '/api/config') {

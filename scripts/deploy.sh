@@ -27,6 +27,8 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then sed -n '2,200p' "$0" | s
 #   MOCK                 1 = built-in demo data (no Run:ai calls). Default 0
 #   UI_USER              default admin; the password is generated once and kept in the Secret
 #   NO_FIT_STRATEGY, EXCLUDE_CLUSTERS, ALLOW_UNKNOWN_CAPACITY   placement policy, see README
+#   USAGE_SOURCE         how GPU usage is measured: workloads (default, fastest) | max | telemetry
+#   CAPACITY_TTL_MS      server-side capacity cache in ms (default 4000)
 #   AUTO_CREATE_PROJECTS true = create a matching project on a cluster that lacks the chosen one (default false)
 set -euo pipefail
 
@@ -94,6 +96,8 @@ kubectl -n "$NS" create secret generic clustermgr-secrets \
   --from-literal=EXCLUDE_CLUSTERS="${EXCLUDE_CLUSTERS:-}" \
   --from-literal=ALLOW_UNKNOWN_CAPACITY="${ALLOW_UNKNOWN_CAPACITY:-false}" \
   --from-literal=AUTO_CREATE_PROJECTS="${AUTO_CREATE_PROJECTS:-false}" \
+  --from-literal=USAGE_SOURCE="${USAGE_SOURCE:-workloads}" \
+  --from-literal=CAPACITY_TTL_MS="${CAPACITY_TTL_MS:-4000}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 TLS_NAME=""

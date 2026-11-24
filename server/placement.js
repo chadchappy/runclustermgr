@@ -113,14 +113,27 @@ export class Reservations {
   constructor(ttlMs = 90000, now = () => Date.now()) {
     this.ttlMs = ttlMs;
     this.now = now;
-    this.items = []; // {clusterId, gpus, at}
+    this.items = []; // {clusterId, gpus, at, workloadId?}
   }
-  add(clusterId, gpus) {
-    if (gpus > 0) this.items.push({ clusterId, gpus, at: this.now() });
+  add(clusterId, gpus, workloadId = null) {
+    if (gpus > 0) this.items.push({ clusterId, gpus, at: this.now(), workloadId });
+  }
+  // after the create call returns we learn the workload id; link the reservation to it
+  attach(clusterId, gpus, workloadId) {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const x = this.items[i];
+      if (x.clusterId === clusterId && x.gpus === gpus && !x.workloadId) { x.workloadId = workloadId; return; }
+    }
   }
   release(clusterId, gpus) {
     const i = this.items.findIndex((x) => x.clusterId === clusterId && x.gpus === gpus);
     if (i >= 0) this.items.splice(i, 1);
+  }
+  // Once a workload shows up in Run:ai's own lists its GPUs are accounted for there (or it is queued),
+  // so the reservation would double-count: drop it.
+  settle(visibleWorkloadIds) {
+    if (!visibleWorkloadIds?.size) return;
+    this.items = this.items.filter((x) => !(x.workloadId && visibleWorkloadIds.has(x.workloadId)));
   }
   snapshot() {
     const cutoff = this.now() - this.ttlMs;

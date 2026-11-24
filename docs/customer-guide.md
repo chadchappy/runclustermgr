@@ -62,7 +62,7 @@ There is no shared public image; you build it once and push it where your cluste
 git clone https://github.com/chadchappy/runclustermgr.git
 cd runclustermgr
 docker buildx build --platform linux/amd64 \
-  -t registry.example.com/runclustermgr:2.2.3 --push .
+  -t registry.example.com/runclustermgr:2.3.2 --push .
 ```
 
 Use `--platform linux/amd64,linux/arm64` if your nodes are mixed or Arm. Use a new, immutable tag for every release (never `latest`).
@@ -89,7 +89,7 @@ Edit `environments/prod.env`. The values you must set:
 
 ```bash
 EXPECT_CONTEXT=prod-cluster                 # the kube context you will deploy to (see step 4)
-IMAGE=registry.example.com/runclustermgr:2.2.3
+IMAGE=registry.example.com/runclustermgr:2.3.2
 RUNAI_CONTROL_PLANE=runai.example.com       # host only, no https://
 RUNAI_CLIENT_ID=cluster-manager             # the application name from step 1
 RUNAI_CLIENT_SECRET_FILE=~/.secrets/clustermgr.secret
