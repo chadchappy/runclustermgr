@@ -94,4 +94,5 @@ In the UI the header shows `Connected to <control plane>` and each cluster card 
 | `readyz` returns 503 | Same as above, or the control plane is unreachable from the cluster (DNS/firewall/split-horizon DNS) |
 | A cluster is greyed out | It is not `Connected` in Run:ai, or the chosen project does not exist on it. The card says which |
 | Values show as `—` | Run:ai did not return that telemetry. A banner lists what failed; the manager never guesses |
+| Workload stays `Pending`: "No node in the default node-pool has GPU resources" | Run:ai scheduling, not the manager: set the project's default node pools to pools that have GPUs (and give it quota there) |
 | Page hangs on a stale Run:ai UI after a control-plane upgrade | Clear site data for the Run:ai host (cached 2.x assets) |

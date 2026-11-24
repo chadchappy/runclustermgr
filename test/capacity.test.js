@@ -35,9 +35,9 @@ test('snapshot reports real numbers per cluster', async () => {
 test('pending/running counts come from workloads', async () => {
   const mock = createMockRunai();
   mock.state.workloads.push(
-    { workloadId: '1', clusterId: 'c-osmo', actualPhase: 'Pending' },
-    { workloadId: '2', clusterId: 'c-osmo', actualPhase: 'Pending' },
-    { workloadId: '3', clusterId: 'c-west', actualPhase: 'Running' },
+    { workloadId: '1', clusterId: 'c-osmo', phase: 'Pending' },
+    { workloadId: '2', clusterId: 'c-osmo', phase: 'Pending' },
+    { workloadId: '3', clusterId: 'c-west', phase: 'Running' },
   );
   const snap = await collectSnapshot(mk(mock));
   assert.equal(snap.clusters.find((c) => c.id === 'c-osmo').pending, 2);

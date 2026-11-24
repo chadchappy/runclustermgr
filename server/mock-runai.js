@@ -93,7 +93,7 @@ export function createMockRunai({
       let list = [...state.workloads].reverse();
       for (const f of u.searchParams.getAll('filterBy')) {
         const m = /^phase==(.+)$/.exec(f);
-        if (m) list = list.filter((w) => w.actualPhase === m[1]);
+        if (m) list = list.filter((w) => w.phase === m[1]);
       }
       const off = Number(u.searchParams.get('offset') || 0);
       const lim = Number(u.searchParams.get('limit') || 100);
@@ -130,8 +130,13 @@ export function createMockRunai({
       const phase = free(cluster) >= need ? 'Running' : 'Pending';
       if (phase === 'Running') cluster.allocated += need;
       const wl = {
+        // creation response fields
         workloadId: `wl-${state.workloads.length + 1}`, name: body.name, clusterId: cluster.uuid, projectId: body.projectId,
-        type, actualPhase: phase, desiredPhase: 'Running', createdAt: new Date().toISOString(), allocatedGPU: phase === 'Running' ? need : 0,
+        actualPhase: phase, desiredPhase: 'Running', createdAt: new Date().toISOString(),
+        // list-item fields (as returned by GET /api/v1/workloads)
+        id: `wl-${state.workloads.length + 1}`, type: type[0].toUpperCase() + type.slice(1), phase,
+        projectName: projects.find((n) => body.projectId.endsWith(`-${n}`)) || null,
+        allocatedResources: { gpu: phase === 'Running' ? need : 0 },
       };
       state.workloads.push(wl);
       return json(202, wl);

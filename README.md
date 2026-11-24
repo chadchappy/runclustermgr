@@ -24,7 +24,7 @@ Failure handling: if the chosen cluster answers `503` (workload definitely not c
 ## Run it
 
 ```bash
-# Demo data, no Run:ai needed
+# Offline demo for development only (built-in fake data; never used in a real deployment)
 MOCK=1 npm start                      # http://localhost:3000
 
 # Against a control plane
@@ -85,6 +85,20 @@ npm test
 - **capacity**: telemetry parsing, missing data becomes `null`.
 - **api (end to end)**: real HTTP server against an in-process fake Run:ai API that enforces the same contract (unknown fields get a 400, like the real API): submission for all workload types, fallback, no-duplicate rules, auth, path traversal, body limits.
 
+### Check against a real control plane
+
+Two scripts talk to a live Run:ai (credentials as for `npm start`):
+
+```bash
+# Read-only: every endpoint/response shape this app depends on. Exit 1 if anything changed.
+RUNAI_CONTROL_PLANE=... RUNAI_CLIENT_ID=... RUNAI_CLIENT_SECRET_FILE=... node scripts/check-live.mjs
+
+# End to end through a deployed app: submits one small workload of each type
+# (training, workspace, distributed PyTorch + MPI, inference), checks placement, deletes them.
+BASE_URL=https://clustermgr.example.com UI_USER=admin UI_PASSWORD=... PROJECT=my-project \
+RUNAI_CONTROL_PLANE=... RUNAI_CLIENT_ID=... RUNAI_CLIENT_SECRET_FILE=... node scripts/qa-live.mjs
+```
+
 ### After a Run:ai upgrade
 
 ```bash
@@ -112,6 +126,11 @@ Request body: `{ type: workspace|training|distributed|inference, name, project, 
 
 - [docs/deployment.md](docs/deployment.md): environments, registries, ingress/TLS, access control, upgrades, troubleshooting
 - [docs/architecture.md](docs/architecture.md): components, data flow, placement algorithm, failure semantics, Run:ai API usage
+
+## Prerequisites in Run:ai
+
+- The same project name must exist on every cluster you want to schedule across (placement skips clusters that lack it).
+- The project needs GPU quota and usable **default node pools** on each cluster. The app places at the cluster level and Run:ai picks the node pool; if a project's default pool has no GPUs, Run:ai leaves the pod `Pending` ("No node in the default node-pool has GPU resources"). Fix it in Run:ai by setting the project's default node pools.
 
 ## Limits
 

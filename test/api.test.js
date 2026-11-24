@@ -193,6 +193,10 @@ test('workload listing maps cluster names', async () => {
   const { json } = await t.call('GET', '/api/workloads');
   assert.equal(json[0].name, 'listed');
   assert.equal(json[0].cluster, 'cluster-a');
+  assert.equal(json[0].project, 'demo-team');
+  assert.equal(json[0].phase, 'Running');
+  assert.equal(json[0].gpus, 1);
+  assert.equal(json[0].type, 'Training');
   await t.close();
 });
 

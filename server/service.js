@@ -145,14 +145,14 @@ export class ClusterManager {
     const names = Object.fromEntries(snap.clusters.map((c) => [c.id, c.name]));
     const items = Array.isArray(list) ? list : list?.workloads || [];
     return items.map((w) => ({
-      id: w.workloadId || w.id,
+      id: w.id || w.workloadId,
       name: w.name,
       type: w.type || null,
       project: w.projectName || w.project || null,
       clusterId: w.clusterId,
       cluster: names[w.clusterId] || w.clusterId,
       phase: w.phase || w.actualPhase || null,
-      gpus: w.allocatedGPU ?? null,
+      gpus: w.allocatedResources?.gpu ?? w.allocatedGPU ?? null,
       createdAt: w.createdAt || null,
     }));
   }
