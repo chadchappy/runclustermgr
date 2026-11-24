@@ -1,478 +1,126 @@
 # Run:ai Cluster Manager
 
-A web application for managing Run:ai clusters, jobs, and resources.
+Multi-cluster workload placement for NVIDIA Run:ai. Submit a workload once; it goes to the connected cluster with the **most available GPUs** that has your project.
 
-## 🆕 Version 2.23 Compatibility
+- Works across all clusters registered in one Run:ai control plane (v3.0+ API).
+- Real telemetry only: free/total/allocated GPUs come from `GET /api/v1/nodes/telemetry`. Missing data shows as "unknown", never as a guess.
+- Creates workspaces, trainings, distributed trainings (PyTorch, TF, MPI, XGBoost, JAX) and inference workloads through the public Run:ai API.
+- Zero runtime dependencies (Node 22+ built-ins only). No `npm install`, no build step.
 
-This application has been updated for compatibility with Run:ai v2.23:
-- Updated authentication endpoints for Keycloak integration
-- Enhanced proxy configuration for proper API routing
-- Verified working deployment with latest Run:ai version
+## How placement works
 
-## 🚀 Features
+A cluster is **eligible** if it is connected, the project exists on it, it is not excluded by policy, and the request does not exceed the project's GPU limit there. Eligible clusters are ranked by:
 
-- **Multi-Cluster Management**: Connect and manage multiple Run:ai clusters from a single interface
-- **Intelligent Load Balancing**: Automatically find the cluster with the most available GPU resources
-- **Real-Time Monitoring**: Live GPU utilization, memory usage, and cluster health metrics
-- **Workload Submission**: Support for workspace, training, inference, and distributed training workloads
-- **Distributed Training**: Full support for PyTorch, TensorFlow, MPI, and XGBoost distributed training
-- **CLI Integration**: Parse and execute Run:ai CLI commands directly from the web interface
-- **Auto-Refresh**: Dashboards automatically refresh every 60 seconds
-- **Containerized Deployment**: Ready-to-deploy Docker container with Kubernetes manifests
+1. fits right now (known free GPUs >= requested)
+2. most free GPUs (minus GPUs reserved by recent in-flight submissions, which keeps a burst of submissions from piling onto one cluster while telemetry catches up)
+3. fewest pending workloads
+4. lowest allocation ratio
+5. name (deterministic)
 
-## 🏗️ Architecture
+If nothing fits, the workload is **queued** on the least-loaded eligible cluster (`NO_FIT_STRATEGY=queue`, default) or rejected (`reject`). The UI shows the ranking and the reason for every cluster before you submit.
 
-- **Frontend**: React TypeScript with Material-UI
-- **Backend Proxy**: nginx reverse proxy for CORS handling
-- **Authentication**: OAuth2 client credentials flow with Keycloak
-- **Container**: Single-stage nginx container with built React app
-- **Deployment**: Kubernetes-ready with ConfigMaps and Secrets
+Failure handling: if the chosen cluster answers `503` (workload definitely not created) the next eligible cluster is tried. Timeouts and `500`s are *not* retried elsewhere because the workload may exist, and a retry could create a duplicate.
 
-## 📋 Prerequisites
-
-- Docker and Docker Compose
-- Kubernetes cluster with kubectl configured
-- Access to Run:ai control plane
-- Run:ai application credentials (app name and secret)
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-The application can be configured using the following environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RUNAI_CONTROL_PLANE` | Run:ai control plane URL (without https://) | `runai.example.com` |
-| `RUNAI_APP_NAME` | Run:ai application name | `<APPNAME>` |
-| `RUNAI_APP_SECRET` | Run:ai application secret | `<APPSECRET>` |
-
-### Updating Configuration
-
-1. **For Kubernetes deployment**: Edit `k8s/configmap.yaml` and `k8s/secret.yaml`
-2. **For Docker deployment**: Set environment variables when running the container
-3. **For development**: Update `src/config/runai-config.ts`
-
-## 🚀 Quick Start
-
-### Option 1: Kubernetes Deployment (Recommended)
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/chadchappy/runclustermgr.git
-   cd runclustermgr
-   ```
-
-2. **Configure your environment**:
-   ```bash
-   # Edit the ConfigMap with your Run:ai settings
-   kubectl edit configmap runai-app-config -f k8s/configmap.yaml
-
-   # Update the secret with your app secret (base64 encoded)
-   echo -n "your-app-secret" | base64
-   kubectl edit secret runai-app-secret -f k8s/configmap.yaml
-   ```
-
-3. **Deploy to Kubernetes**:
-   ```bash
-   chmod +x scripts/deploy.sh
-   ./scripts/deploy.sh
-   ```
-
-4. **Access the application**:
-   ```bash
-   kubectl port-forward service/runai-app 3000:3000
-   ```
-
-   Open http://localhost:3000 in your browser.
-
-### Option 2: Docker Deployment
-
-1. **Run with Docker**:
-   ```bash
-   docker run -d \
-     --name runai-cluster-manager \
-     -p 3000:3000 \
-     -e RUNAI_CONTROL_PLANE="your-control-plane.com" \
-     -e RUNAI_APP_NAME="your-app-name" \
-     -e RUNAI_APP_SECRET="your-app-secret" \
-     ghcr.io/chadchappy/runai-app:latest
-   ```
-
-2. **Access the application**:
-   Open http://localhost:3000 in your browser.
-
-## 🔧 Development
-
-### Local Development Setup
-
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-2. **Configure environment**:
-   ```bash
-   # Copy and edit the configuration
-   cp src/config/runai-config.ts.example src/config/runai-config.ts
-   # Edit the file with your Run:ai credentials
-   ```
-
-3. **Start development server**:
-   ```bash
-   npm start
-   ```
-
-4. **Start proxy server** (in another terminal):
-   ```bash
-   node proxy-server.js
-   ```
-
-### Building for Production
+## Run it
 
 ```bash
-# Build the React application
-npm run build
+# Demo data, no Run:ai needed
+MOCK=1 npm start                      # http://localhost:3000
 
-# Build Docker image
-docker build -t runai-cluster-manager .
-
-# Or use the build script
-chmod +x scripts/build.sh
-./scripts/build.sh
+# Against a control plane
+export RUNAI_CONTROL_PLANE=your-control-plane.example.com
+export RUNAI_CLIENT_ID=<application name>
+export RUNAI_CLIENT_SECRET=<application secret>
+npm start
 ```
 
-## 📁 Project Structure
+Create the application in Run:ai under *Settings → Access → Applications*. It needs permission to read clusters, projects, nodes/telemetry and workloads, and to create workloads in the projects you use.
 
-```
-├── src/                          # React TypeScript source code
-│   ├── components/              # React components
-│   ├── services/               # API services and utilities
-│   ├── types/                  # TypeScript type definitions
-│   └── config/                 # Configuration files
-├── k8s/                         # Kubernetes manifests
-│   ├── configmap.yaml          # ConfigMap and Secret definitions
-│   ├── deployment.yaml         # Application deployment
-│   └── service.yaml            # Services and networking
-├── scripts/                     # Deployment and utility scripts
-│   ├── build.sh               # Container build script
-│   ├── deploy.sh              # Kubernetes deployment script
-│   └── update-config.sh       # Configuration update utility
-├── nginx.conf.template         # nginx configuration template
-├── startup.sh                 # Container startup script
-├── Dockerfile                 # Container build definition
-└── README.md                  # This file
-```
+| Variable | Default | Purpose |
+|---|---|---|
+| `RUNAI_CONTROL_PLANE` | | control plane host, no scheme |
+| `RUNAI_CLIENT_ID` / `RUNAI_CLIENT_SECRET` | | app credentials. `*_FILE` variants read a mounted file |
+| `UI_USER` / `UI_PASSWORD` | off | HTTP basic auth for UI and API (health check stays open) |
+| `NO_FIT_STRATEGY` | `queue` | `queue` or `reject` |
+| `EXCLUDE_CLUSTERS` | | comma list of cluster names/uuids never to use |
+| `ALLOW_UNKNOWN_CAPACITY` | `false` | treat clusters with unknown GPU availability as available |
+| `CAPACITY_TTL_MS` | `15000` | telemetry cache |
+| `RESERVATION_TTL_MS` | `90000` | how long a submission reserves GPUs |
+| `PORT` | `3000` | |
 
-## 🎯 Usage
+## Deploy to Kubernetes
 
-### Dashboard Features
-
-1. **Cluster Overview**: View all connected clusters with health scores
-2. **GPU Metrics**: Real-time GPU utilization and memory usage
-3. **Load Balancing**: Automatic selection of optimal cluster for workload submission
-4. **Workload Management**: Submit and monitor training, workspace, and inference jobs
-
-### Supported Workload Types
-
-- **Workspace**: Interactive development environments
-- **Training**: Single-node training jobs
-- **Distributed Training**: Multi-node PyTorch, TensorFlow, MPI, and XGBoost jobs
-- **Inference**: Model serving and inference workloads
-
-### CLI Command Support
-
-The application supports parsing and executing Run:ai CLI commands:
+Each environment is one small env file (no secrets in it):
 
 ```bash
-# Workspace submission
-runai workspace submit my-workspace -i pytorch/pytorch:latest -g 1
-
-# Distributed PyTorch training
-runai training pytorch submit my-job --workers=2 -g 2 -i pytorch/pytorch:latest --command -- python train.py
-
-# Training with specific resources
-runai training submit my-training -g 0.5 -i tensorflow/tensorflow:latest --cpu 2 --memory 8G
+cp environments/example.env environments/prod.env     # edit: context, image, control plane, app name
+echo -n '<application secret>' > ~/.secrets/clustermgr.secret && chmod 600 ~/.secrets/clustermgr.secret
+export KUBECONFIG=~/.kube/config-prod
+scripts/deploy.sh environments/prod.env
 ```
 
-## 🔐 Security
+That is the whole setup. The script:
 
-- OAuth2 client credentials authentication
-- Kubernetes Secrets for sensitive data
-- nginx proxy for secure API communication
-- CORS handling for cross-origin requests
+- **refuses to run** unless the current kube context equals `EXPECT_CONTEXT`
+- stores credentials in a Kubernetes Secret (never in git or manifests) and generates the UI password once
+- defaults the hostname to `clustermgr.<control plane host>` and auto-detects the ingress class
+- copies an existing TLS secret (`TLS_SECRET_SOURCE`) and refreshes an ECR pull secret (`ECR_REGION`) if you ask
+- works without any ingress (`INGRESS=0`): `kubectl -n clustermgr port-forward svc/clustermgr 3000:80`
 
-## 🐛 Troubleshooting
+See [docs/deployment.md](docs/deployment.md) for every option, other registries, and upgrades. The checked-in [environments/prod.env](environments/prod.env) is a working example.
 
-### Common Issues
+The pod runs a single replica (in-flight reservations live in memory), non-root, on a read-only filesystem with all capabilities dropped.
 
-1. **405 Method Not Allowed**: Check nginx proxy configuration and ensure correct API endpoints
-2. **Authentication Failures**: Verify app name and secret in ConfigMap/Secret
-3. **CORS Errors**: Ensure proxy server is running and configured correctly
-4. **Pod Startup Issues**: Check container logs and resource limits
+Image: `docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:<tag> .` CI (`.github/workflows/ci.yml`) runs the tests and publishes to GHCR on `v*` tags.
 
-### Debug Commands
+## Tests
 
 ```bash
-# Check pod status
-kubectl get pods -l app=runai-app
-
-# View logs
-kubectl logs -l app=runai-app -f
-
-# Check configuration
-kubectl describe configmap runai-app-config
-kubectl describe secret runai-app-secret
-
-# Port forward for local access
-kubectl port-forward service/runai-app 3000:3000
+npm test
 ```
 
-## 🤝 Contributing
+- **placement**: ranking, tie-breaks, quota limits, fractional GPUs, queueing, reservations.
+- **payloads + contract**: every field sent to Run:ai is checked against `contract/workload-contract.json`, generated from the control plane's OpenAPI spec (`/api/docs`).
+- **client**: token reuse and refresh, retry rules, pagination.
+- **capacity**: telemetry parsing, missing data becomes `null`.
+- **api (end to end)**: real HTTP server against an in-process fake Run:ai API that enforces the same contract (unknown fields get a 400, like the real API): submission for all workload types, fallback, no-duplicate rules, auth, path traversal, body limits.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For issues and questions:
-- Create an issue in this repository
-- Check the troubleshooting section above
-- Review the Run:ai documentation
-
-## 🔄 Updates
-
-To update the application:
+### After a Run:ai upgrade
 
 ```bash
-# Pull latest changes
-git pull origin main
-
-# Rebuild and redeploy
-./scripts/build.sh --push
-./scripts/deploy.sh
+curl -s https://<control-plane>/api/docs -o openapi.yaml
+yq -o=json . openapi.yaml > openapi.json
+npm run contract -- openapi.json   # regenerates contract/workload-contract.json
+npm test                           # failures show exactly which fields changed
 ```
 
-## 🏗️ Building the Container Image
+## API
 
-### Prerequisites
-- Docker installed and running
-- kubectl configured for your Kubernetes cluster
-- Access to a container registry (optional, for pushing images)
+| | |
+|---|---|
+| `GET /api/clusters` | capacity snapshot (`?refresh=1` bypasses cache) |
+| `GET /api/projects` | projects and the clusters that have them |
+| `POST /api/placement` | dry run: ranking and reasons, nothing is submitted |
+| `POST /api/workloads` | place and submit; `pinnedClusterId` forces a cluster |
+| `GET /api/workloads` | recent workloads across clusters |
+| `GET /api/decisions` | recent placement decisions |
+| `GET /healthz`, `/readyz` | liveness; readiness (verifies Run:ai credentials) |
 
-### Build the Image
+Request body: `{ type: workspace|training|distributed|inference, name, project, image, gpus, cpu?, memory?, command?, args?, env?, nodePool?, framework?, workers?, port?, pinnedClusterId? }`. `gpus` below 1 requests a fractional GPU.
 
-```bash
-# Make the build script executable
-chmod +x scripts/build.sh
+## More documentation
 
-# Build the container image
-./scripts/build.sh
+- [docs/deployment.md](docs/deployment.md): environments, registries, ingress/TLS, access control, upgrades, troubleshooting
+- [docs/architecture.md](docs/architecture.md): components, data flow, placement algorithm, failure semantics, Run:ai API usage
 
-# Optional: Build and push to registry
-./scripts/build.sh --push
-```
+## Limits
 
-## 🚀 Deploying to Kubernetes
+- Clusters must be registered in the same control plane. Separate control planes are not aggregated.
+- Reservations are per process; running several replicas would make bursts less even.
+- Live data depends on the telemetry types `TOTAL_GPUS`, `FREE_GPUS`, `ALLOCATED_GPUS`, `READY_GPUS` being available.
 
-### Quick Deployment
+## Security notes
 
-```bash
-# Make the deployment script executable
-chmod +x scripts/deploy.sh
-
-# Deploy to Kubernetes
-./scripts/deploy.sh
-```
-
-### Manual Deployment Steps
-
-1. **Apply ConfigMap and Secret:**
-   ```bash
-   kubectl apply -f k8s/configmap.yaml
-   ```
-
-2. **Deploy the application:**
-   ```bash
-   kubectl apply -f k8s/deployment.yaml
-   ```
-
-3. **Create services:**
-   ```bash
-   kubectl apply -f k8s/service.yaml
-   ```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-The application can be configured using the following environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RUNAI_CONTROL_PLANE` | Run:ai control plane hostname | `runai.example.com` |
-| `RUNAI_APP_NAME` | Application name for authentication | `<APPNAME>` |
-| `RUNAI_APP_SECRET` | Application secret for authentication | `<APPSECRET>` |
-
-### Updating Configuration
-
-Use the configuration update script to change environment settings:
-
-```bash
-# Make the script executable
-chmod +x scripts/update-config.sh
-
-# Show current configuration
-./scripts/update-config.sh show
-
-# Update configuration for different environment
-./scripts/update-config.sh update runai.example.com your-app-name your-secret-here
-```
-
-### Manual Configuration Update
-
-Edit the ConfigMap and Secret directly:
-
-```bash
-# Edit ConfigMap
-kubectl edit configmap runai-app-config
-
-# Edit Secret (base64 encoded values)
-kubectl edit secret runai-app-secret
-
-# Restart deployment to apply changes
-kubectl rollout restart deployment/runai-app
-```
-
-## 🌐 Accessing the Application
-
-### Port Forwarding (Recommended)
-
-```bash
-# Forward port 3000 to your local machine
-kubectl port-forward service/runai-app 3000:3000
-
-# Open browser
-open http://localhost:3000
-```
-
-### NodePort Service
-
-If you prefer direct access without port forwarding:
-
-```bash
-# Get the NodePort
-kubectl get service runai-app-nodeport
-
-# Access via NodePort (replace <node-ip> and <node-port>)
-open http://<node-ip>:<node-port>
-```
-
-### Ingress (Optional)
-
-For production deployments with custom domains, configure the Ingress resource in `k8s/service.yaml`.
-
-## 📊 Monitoring and Troubleshooting
-
-### View Application Logs
-
-```bash
-# View current logs
-kubectl logs -l app=runai-app -f
-
-# View logs from specific pod
-kubectl logs <pod-name> -f
-```
-
-### Check Application Status
-
-```bash
-# Get pod status
-kubectl get pods -l app=runai-app
-
-# Describe pod for detailed information
-kubectl describe pod -l app=runai-app
-
-# Check service endpoints
-kubectl get endpoints runai-app
-```
-
-### Health Checks
-
-The application includes health check endpoints:
-
-```bash
-# Test health endpoint
-curl http://localhost:3000/health
-```
-
-## 🔄 Updates and Maintenance
-
-### Updating the Application
-
-1. Build new image with updated tag
-2. Update deployment with new image
-3. Monitor rollout status
-
-```bash
-# Build new image
-./scripts/build.sh
-
-# Update deployment (if using latest tag)
-kubectl rollout restart deployment/runai-app
-
-# Monitor rollout
-kubectl rollout status deployment/runai-app
-```
-
-### Scaling the Application
-
-```bash
-# Scale to multiple replicas
-kubectl scale deployment runai-app --replicas=3
-
-# Check scaling status
-kubectl get deployment runai-app
-```
-
-## 🛡️ Security Considerations
-
-- The application runs as non-root user (nginx user, UID 101)
-- Read-only root filesystem is not enforced due to nginx requirements
-- Secrets are stored in Kubernetes Secret objects
-- HTTPS is terminated at the nginx proxy level
-- CORS is configured for the specific Run:ai control plane
-
-## 📁 File Structure
-
-```
-├── Dockerfile                 # Multi-stage container build
-├── nginx.conf                # Nginx configuration with proxy
-├── docker-entrypoint.sh      # Container startup script
-├── k8s/
-│   ├── configmap.yaml        # ConfigMap and Secret definitions
-│   ├── deployment.yaml       # Kubernetes Deployment
-│   └── service.yaml          # Services and Ingress
-├── scripts/
-│   ├── build.sh             # Container build script
-│   ├── deploy.sh            # Kubernetes deployment script
-│   └── update-config.sh     # Configuration update script
-└── README-DEPLOYMENT.md     # This file
-```
-
-## 🆘 Support
-
-For issues with deployment:
-
-1. Check application logs: `kubectl logs -l app=runai-app -f`
-2. Verify configuration: `./scripts/update-config.sh show`
-3. Test connectivity: `kubectl port-forward service/runai-app 3000:3000`
-4. Check health endpoint: `curl http://localhost:3000/health`
-
+- No credentials in the repository. **The previous version committed an application secret; it must be treated as compromised and rotated if it was ever valid, and removed from git history.**
+- The UI renders API data with `textContent` only and sends a strict CSP.
+- Enable `UI_USER`/`UI_PASSWORD` (the deploy script always does) when exposing through an ingress; the app can submit workloads.

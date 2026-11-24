@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Run:ai Cluster Manager</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2376b900'/%3E%3Cpath d='M8 21l5-10 4 7 3-5 4 8' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#76b900"/><path d="M8 21l5-10 4 7 3-5 4 8" fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div>
+        <h1>Cluster Manager</h1>
+        <p id="cp" class="muted">Multi-cluster scheduling for Run:ai</p>
+      </div>
+    </div>
+    <div class="status">
+      <span id="mock" class="chip warn" hidden>Demo data</span>
+      <span id="live" class="live" role="status"><i class="dot"></i><span id="liveText">Connecting…</span></span>
+      <button id="refresh" class="ghost" type="button" title="Refresh now">Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="alert" class="alert" role="alert" hidden></div>
+
+    <section aria-labelledby="h-clusters">
+      <div class="section-head">
+        <h2 id="h-clusters">Clusters</h2>
+        <p id="summary" class="muted"></p>
+      </div>
+      <div id="clusters" class="grid" aria-live="polite"></div>
+    </section>
+
+    <section class="split" aria-labelledby="h-submit">
+      <form id="form" novalidate autocomplete="off">
+        <div class="section-head"><h2 id="h-submit">Submit a workload</h2></div>
+
+        <div class="seg" role="radiogroup" aria-label="Workload type" id="type">
+          <label><input type="radio" name="type" value="workspace"><span>Workspace</span></label>
+          <label><input type="radio" name="type" value="training" checked><span>Training</span></label>
+          <label><input type="radio" name="type" value="distributed"><span>Distributed</span></label>
+          <label><input type="radio" name="type" value="inference"><span>Inference</span></label>
+        </div>
+
+        <div class="row2">
+          <label class="field">Name
+            <input name="name" required maxlength="63" spellcheck="false">
+          </label>
+          <label class="field">Project
+            <select name="project" required></select>
+          </label>
+        </div>
+
+        <label class="field">Container image
+          <input name="image" required placeholder="nvcr.io/nvidia/pytorch:24.05-py3" spellcheck="false">
+        </label>
+
+        <div class="field">
+          <span class="lbl">GPUs <small class="muted">(per pod)</small></span>
+          <div class="gpus">
+            <div class="chips" id="gpuChips" role="group" aria-label="GPU presets"></div>
+            <input name="gpus" type="number" min="0" max="64" step="any" value="1" aria-label="GPU count">
+          </div>
+          <small class="hint" id="gpuHint"></small>
+        </div>
+
+        <div class="row2 dist" hidden>
+          <label class="field">Framework
+            <select name="framework"><option>PyTorch</option><option>TF</option><option>MPI</option><option>XGBoost</option><option>JAX</option></select>
+          </label>
+          <label class="field">Workers
+            <input name="workers" type="number" min="1" max="64" value="2">
+          </label>
+        </div>
+        <label class="field inf" hidden>Serving port
+          <input name="port" type="number" min="1" max="65535" value="8000">
+        </label>
+
+        <details>
+          <summary>Advanced</summary>
+          <div class="row2">
+            <label class="field">CPU cores <input name="cpu" type="number" min="0" step="any" placeholder="default"></label>
+            <label class="field">Memory <input name="memory" placeholder="e.g. 16G"></label>
+          </div>
+          <div class="row2">
+            <label class="field">Command <input name="command" placeholder="python" spellcheck="false"></label>
+            <label class="field">Arguments <input name="args" placeholder="train.py --epochs 3" spellcheck="false"></label>
+          </div>
+          <label class="field">Node pool <input name="nodePool" placeholder="default" spellcheck="false"></label>
+          <label class="field">Environment variables <small class="muted">(one KEY=value per line)</small>
+            <textarea name="env" rows="3" spellcheck="false"></textarea>
+          </label>
+          <label class="field">Cluster
+            <select name="pin"><option value="">Automatic — most available GPUs (recommended)</option></select>
+          </label>
+        </details>
+
+        <ul id="errors" class="errors" hidden></ul>
+        <div class="actions">
+          <button id="submit" class="primary" type="submit">Place &amp; submit</button>
+          <span id="busy" class="muted" hidden>Submitting…</span>
+        </div>
+        <div id="result" class="result" hidden></div>
+      </form>
+
+      <aside aria-labelledby="h-place">
+        <div class="section-head"><h2 id="h-place">Placement preview</h2></div>
+        <p id="placeMsg" class="place-msg muted">Fill in the form to see where this would run.</p>
+        <ol id="ranking" class="ranking"></ol>
+      </aside>
+    </section>
+
+    <section aria-labelledby="h-wl">
+      <div class="section-head"><h2 id="h-wl">Recent workloads</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Cluster</th><th>Project</th><th>Type</th><th>Phase</th><th class="num">GPUs</th><th>Created</th></tr></thead>
+          <tbody id="workloads"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <footer class="muted">Placement favors the connected cluster with the most free GPUs that has your project. <span id="ver"></span></footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

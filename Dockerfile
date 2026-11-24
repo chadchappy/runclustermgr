@@ -1,27 +1,12 @@
-# Production stage with nginx
-FROM nginx:alpine
-
-# Install envsubst (part of gettext package)
-RUN apk add --no-cache gettext
-
-# Copy nginx configuration template
-COPY nginx.conf.template /etc/nginx/nginx.conf.template
-
-# Copy pre-built application
-COPY build /usr/share/nginx/html
-
-# Create startup script
-COPY startup.sh /startup.sh
-RUN chmod +x /startup.sh
-
-# Create a directory for nginx to write temporary files
-RUN mkdir -p /var/cache/nginx && \
-    chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /usr/share/nginx/html
-
-# Expose port 3000
+# Zero-dependency Node service: no npm install, no build step.
+FROM node:22-alpine
+ENV NODE_ENV=production PORT=3000
+WORKDIR /app
+COPY package.json ./
+COPY server ./server
+COPY web ./web
+COPY contract ./contract
+USER node
 EXPOSE 3000
-
-# Use custom entrypoint
-ENTRYPOINT ["/startup.sh"]
-CMD ["nginx", "-g", "daemon off;"]
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD wget -qO- http://127.0.0.1:3000/healthz || exit 1
+CMD ["node", "server/index.js"]

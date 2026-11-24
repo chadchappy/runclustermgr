@@ -1,0 +1,91 @@
+# Template rendered by scripts/render-manifest.js (called from scripts/deploy.sh).
+# Optional pieces (TLS, registry pull secret, ingress class, the whole ingress) are tagged with
+# marker comments and included only when enabled for the environment.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clustermgr
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clustermgr
+  namespace: clustermgr
+  labels: { app: clustermgr }
+spec:
+  # Single replica on purpose: in-flight GPU reservations are held in memory.
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: clustermgr }
+  template:
+    metadata:
+      labels: { app: clustermgr }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: clustermgr
+          image: ${IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: RUNAI_CONTROL_PLANE, value: "${RUNAI_CONTROL_PLANE}" }
+            - { name: MOCK, value: "${MOCK}" }
+          envFrom:
+            - secretRef: { name: clustermgr-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      imagePullSecrets: # @pull
+        - name: ${PULL_SECRET} # @pull
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clustermgr
+  namespace: clustermgr
+  labels: { app: clustermgr }
+spec:
+  selector: { app: clustermgr }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+# @ingress-begin
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: clustermgr
+  namespace: clustermgr
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+spec:
+  ingressClassName: ${INGRESS_CLASS} # @ingressclass
+  tls: # @tls
+    - hosts: ["${HOST}"] # @tls
+      secretName: ${TLS_SECRET} # @tls
+  rules:
+    - host: ${HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: clustermgr, port: { name: http } }
+# @ingress-end

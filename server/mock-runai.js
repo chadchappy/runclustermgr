@@ -1,0 +1,144 @@
+// A stateful, in-process fake of the Run:ai control plane API (the endpoints
+// this app uses). It is a `fetch` implementation, so the real client, capacity
+// and submission code run unchanged against it. Used by tests and `MOCK=1`.
+//
+// It enforces the generated OpenAPI contract: unknown fields get a 400, exactly
+// like the real API, so payload regressions fail here instead of in production.
+import { readFileSync } from 'node:fs';
+
+const contract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).endpoints;
+const PATH_TO_TYPE = Object.fromEntries(Object.entries(contract).map(([t, e]) => [e.path, t]));
+
+const json = (status, body) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+export function createMockRunai({
+  clientId = 'mock-app',
+  clientSecret = 'mock-secret',
+  clusters,
+  projects = ['demo-team', 'research'],
+} = {}) {
+  const state = {
+    tokensIssued: 0,
+    expireTokens: false, // set true to force a 401 on the next call (token refresh test)
+    failSubmit: {}, // clusterId -> {status, message, once}
+    calls: [],
+    workloads: [],
+    clusters: clusters || [
+      { uuid: 'c-west', name: 'cluster-a', state: 'Connected', total: 32, allocated: 20 },
+      { uuid: 'c-osmo', name: 'cluster-b', state: 'Connected', total: 2, allocated: 0 },
+      { uuid: 'c-off', name: 'offline-lab', state: 'Disconnected', total: 16, allocated: 0 },
+    ],
+  };
+  const validTokens = new Set();
+  const free = (c) => c.total - c.allocated;
+
+  async function fetchImpl(url, init = {}) {
+    const u = new URL(url);
+    const method = (init.method || 'GET').toUpperCase();
+    const path = u.pathname;
+    state.calls.push(`${method} ${path}${u.search}`);
+    let body = null;
+    try { body = init.body ? JSON.parse(init.body) : null; } catch { return json(400, { code: 400, message: 'invalid JSON' }); }
+
+    if (path === '/api/v1/token' && method === 'POST') {
+      if (body?.grantType !== 'client_credentials' || body.clientID !== clientId || body.clientSecret !== clientSecret) {
+        return json(401, { code: 401, message: 'invalid client credentials' });
+      }
+      const tok = `tok-${++state.tokensIssued}`;
+      validTokens.add(tok);
+      return json(200, { accessToken: tok, expiresIn: 3600 });
+    }
+
+    const auth = (init.headers?.Authorization || '').replace('Bearer ', '');
+    if (!validTokens.has(auth) || state.expireTokens) {
+      state.expireTokens = false;
+      validTokens.delete(auth);
+      return json(401, { code: 401, message: 'authorization header is missing or invalid' });
+    }
+
+    if (path === '/api/v1/clusters' && method === 'GET') {
+      return json(200, state.clusters.map((c) => ({
+        uuid: c.uuid, name: c.name, version: '3.0.26', lastLiveness: new Date().toISOString(), status: { state: c.state },
+      })));
+    }
+
+    if (path === '/api/v1/nodes/telemetry' && method === 'GET') {
+      const type = u.searchParams.get('telemetryType');
+      const f = {
+        TOTAL_GPUS: (c) => c.total,
+        FREE_GPUS: free,
+        ALLOCATED_GPUS: (c) => c.allocated,
+        READY_GPUS: (c) => (c.state === 'Connected' ? c.total : 0),
+      }[type];
+      if (!f) return json(400, { code: 400, message: `unsupported telemetryType ${type}` });
+      return json(200, {
+        type, timestamp: new Date().toISOString(),
+        values: state.clusters.map((c) => ({ value: String(f(c)), groups: [{ key: 'ClusterId', value: c.uuid }] })),
+      });
+    }
+
+    if (path === '/api/v1/org-unit/projects' && method === 'GET') {
+      const all = state.clusters.flatMap((c) => projects.map((p) => ({
+        id: `p-${c.uuid}-${p}`, name: p, clusterId: c.uuid,
+        resources: [{ nodePool: { name: 'default' }, gpu: { deserved: Math.min(8, c.total), limit: -1 } }],
+      })));
+      const off = Number(u.searchParams.get('offset') || 0);
+      const lim = Number(u.searchParams.get('limit') || 100);
+      const page = all.slice(off, off + lim);
+      return json(200, { projects: page, ...(off + lim < all.length ? { next: off + lim } : {}) });
+    }
+
+    if (path === '/api/v1/workloads' && method === 'GET') {
+      let list = [...state.workloads].reverse();
+      for (const f of u.searchParams.getAll('filterBy')) {
+        const m = /^phase==(.+)$/.exec(f);
+        if (m) list = list.filter((w) => w.actualPhase === m[1]);
+      }
+      const off = Number(u.searchParams.get('offset') || 0);
+      const lim = Number(u.searchParams.get('limit') || 100);
+      return json(200, { workloads: list.slice(off, off + lim), ...(off + lim < list.length ? { next: off + lim } : {}) });
+    }
+
+    const type = PATH_TO_TYPE[path];
+    if (type && method === 'POST') {
+      const ct = contract[type];
+      const bad = [];
+      for (const k of Object.keys(body || {})) if (!ct.topKeys.includes(k)) bad.push(k);
+      for (const k of ct.topRequired) if (body?.[k] === undefined) bad.push(`missing:${k}`);
+      for (const k of Object.keys(body?.spec || {})) if (!ct.specKeys.includes(k)) bad.push(`spec.${k}`);
+      for (const k of Object.keys(body?.spec?.compute || {})) if (!ct.computeKeys.includes(k)) bad.push(`spec.compute.${k}`);
+      const gt = body?.spec?.compute?.gpuRequestType;
+      if (gt && !ct.enums.gpuRequestType.includes(gt)) bad.push(`spec.compute.gpuRequestType=${gt}`);
+      const fw = body?.spec?.distributedFramework;
+      if (fw && !ct.enums.distributedFramework.includes(fw)) bad.push(`spec.distributedFramework=${fw}`);
+      if (bad.length) return json(400, { code: 400, message: `invalid request: ${bad.join(', ')}` });
+
+      const cluster = state.clusters.find((c) => c.uuid === body.clusterId);
+      if (!cluster) return json(400, { code: 400, message: 'unknown clusterId' });
+      const inj = state.failSubmit[cluster.uuid];
+      if (inj) {
+        if (inj.once) delete state.failSubmit[cluster.uuid];
+        return json(inj.status, { code: inj.status, message: inj.message || 'injected failure' });
+      }
+      if (cluster.state !== 'Connected') return json(503, { code: 503, message: 'cluster not connected' });
+
+      const c = body.spec?.compute || {};
+      const per = c.gpuPortionRequest ?? c.gpuDevicesRequest ?? 0;
+      const pods = type === 'distributed' ? (body.spec.numWorkers + (body.spec.distributedFramework === 'MPI' ? 0 : 1)) : 1;
+      const need = per * pods;
+      const phase = free(cluster) >= need ? 'Running' : 'Pending';
+      if (phase === 'Running') cluster.allocated += need;
+      const wl = {
+        workloadId: `wl-${state.workloads.length + 1}`, name: body.name, clusterId: cluster.uuid, projectId: body.projectId,
+        type, actualPhase: phase, desiredPhase: 'Running', createdAt: new Date().toISOString(), allocatedGPU: phase === 'Running' ? need : 0,
+      };
+      state.workloads.push(wl);
+      return json(202, wl);
+    }
+
+    return json(404, { code: 404, message: `no mock for ${method} ${path}` });
+  }
+
+  return { fetch: fetchImpl, state, credentials: { clientId, clientSecret } };
+}

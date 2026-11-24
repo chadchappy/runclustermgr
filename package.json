@@ -1,64 +1,15 @@
 {
   "name": "runai-cluster-manager",
-  "version": "1.0.0",
-  "description": "NVIDIA Run:ai Multi-Cluster Load Balancer Frontend",
+  "version": "2.0.0",
+  "description": "Multi-cluster placement and submission for NVIDIA Run:ai: send each workload to the cluster with the most available GPUs.",
   "private": true,
-  "dependencies": {
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
-    "@mui/icons-material": "^5.15.0",
-    "@mui/material": "^5.15.0",
-    "@types/node": "^16.18.0",
-    "@types/react": "^18.2.45",
-    "@types/react-dom": "^18.2.18",
-    "ajv": "^8.17.1",
-    "axios": "^1.6.2",
-    "date-fns": "^2.30.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.4.1",
-    "react-scripts": "5.0.1",
-    "typescript": "^4.9.5",
-    "web-vitals": "^3.5.0"
-  },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^5.16.4",
-    "@testing-library/react": "^13.4.0",
-    "@testing-library/user-event": "^13.5.0",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "http-proxy-middleware": "^3.0.5"
-  },
+  "type": "module",
+  "engines": { "node": ">=22" },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+    "start": "node server/index.js",
+    "dev": "MOCK=1 node --watch server/index.js",
+    "test": "node --test",
+    "contract": "node scripts/gen-contract.js"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  },
-  "proxy": "http://localhost:8080",
-  "main": "test-runai-connection.js",
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "license": "MIT"
 }

@@ -1,0 +1,353 @@
+{
+  "generatedFrom": "NVIDIA Run:ai 2.0.0",
+  "endpoints": {
+    "workspace": {
+      "path": "/api/v1/workloads/workspaces",
+      "topKeys": [
+        "clusterId",
+        "name",
+        "projectId",
+        "spec",
+        "templateId",
+        "useGivenNameAsPrefix"
+      ],
+      "topRequired": [
+        "clusterId",
+        "name",
+        "projectId"
+      ],
+      "specKeys": [
+        "annotations",
+        "args",
+        "autoDeletionTimeAfterCompletionSeconds",
+        "backoffLimit",
+        "category",
+        "command",
+        "compute",
+        "createHomeDir",
+        "environmentVariables",
+        "exposedUrls",
+        "image",
+        "imagePullPolicy",
+        "imagePullSecrets",
+        "labels",
+        "nodeAffinityRequired",
+        "nodePools",
+        "nodeType",
+        "podAffinity",
+        "ports",
+        "preemptibility",
+        "priorityClass",
+        "probes",
+        "relatedUrls",
+        "restartPolicy",
+        "security",
+        "stdin",
+        "storage",
+        "terminateAfterPreemption",
+        "terminationGracePeriodSeconds",
+        "tolerations",
+        "tty",
+        "workingDir"
+      ],
+      "computeKeys": [
+        "cpuCoreLimit",
+        "cpuCoreRequest",
+        "cpuMemoryLimit",
+        "cpuMemoryRequest",
+        "extendedResources",
+        "gpuDevicesRequest",
+        "gpuMemoryLimit",
+        "gpuMemoryRequest",
+        "gpuPortionLimit",
+        "gpuPortionRequest",
+        "gpuRequestType",
+        "largeShmRequest"
+      ],
+      "envVarKeys": [
+        "configMap",
+        "description",
+        "exclude",
+        "name",
+        "podFieldRef",
+        "secret",
+        "userCredential",
+        "value"
+      ],
+      "enums": {
+        "gpuRequestType": [
+          "portion",
+          "memory"
+        ]
+      }
+    },
+    "training": {
+      "path": "/api/v1/workloads/trainings",
+      "topKeys": [
+        "clusterId",
+        "name",
+        "projectId",
+        "spec",
+        "templateId",
+        "useGivenNameAsPrefix"
+      ],
+      "topRequired": [
+        "clusterId",
+        "name",
+        "projectId"
+      ],
+      "specKeys": [
+        "annotations",
+        "args",
+        "autoDeletionTimeAfterCompletionSeconds",
+        "backoffLimit",
+        "category",
+        "command",
+        "completions",
+        "compute",
+        "createHomeDir",
+        "environmentVariables",
+        "exposedUrls",
+        "image",
+        "imagePullPolicy",
+        "imagePullSecrets",
+        "labels",
+        "nodeAffinityRequired",
+        "nodePools",
+        "nodeType",
+        "parallelism",
+        "podAffinity",
+        "ports",
+        "preemptibility",
+        "priorityClass",
+        "probes",
+        "relatedUrls",
+        "restartPolicy",
+        "security",
+        "stdin",
+        "storage",
+        "terminateAfterPreemption",
+        "terminationGracePeriodSeconds",
+        "tolerations",
+        "tty",
+        "workingDir"
+      ],
+      "computeKeys": [
+        "cpuCoreLimit",
+        "cpuCoreRequest",
+        "cpuMemoryLimit",
+        "cpuMemoryRequest",
+        "extendedResources",
+        "gpuDevicesRequest",
+        "gpuMemoryLimit",
+        "gpuMemoryRequest",
+        "gpuPortionLimit",
+        "gpuPortionRequest",
+        "gpuRequestType",
+        "largeShmRequest"
+      ],
+      "envVarKeys": [
+        "configMap",
+        "description",
+        "exclude",
+        "name",
+        "podFieldRef",
+        "secret",
+        "userCredential",
+        "value"
+      ],
+      "enums": {
+        "gpuRequestType": [
+          "portion",
+          "memory"
+        ]
+      }
+    },
+    "distributed": {
+      "path": "/api/v1/workloads/distributed",
+      "topKeys": [
+        "clusterId",
+        "masterSpec",
+        "masterSpecSameAsWorker",
+        "name",
+        "projectId",
+        "spec",
+        "templateId",
+        "useGivenNameAsPrefix"
+      ],
+      "topRequired": [
+        "clusterId",
+        "name",
+        "projectId"
+      ],
+      "specKeys": [
+        "annotations",
+        "args",
+        "autoDeletionTimeAfterCompletionSeconds",
+        "backoffLimit",
+        "category",
+        "cleanPodPolicy",
+        "command",
+        "compute",
+        "createHomeDir",
+        "distributedFramework",
+        "environmentVariables",
+        "exposedUrls",
+        "image",
+        "imagePullPolicy",
+        "imagePullSecrets",
+        "labels",
+        "maxReplicas",
+        "minReplicas",
+        "mpiLauncherCreationPolicy",
+        "nodeAffinityRequired",
+        "nodePools",
+        "nodeType",
+        "numWorkers",
+        "podAffinity",
+        "ports",
+        "preemptibility",
+        "priorityClass",
+        "probes",
+        "relatedUrls",
+        "restartPolicy",
+        "security",
+        "segmentSize",
+        "slotsPerWorker",
+        "sshAuthMountPath",
+        "stdin",
+        "storage",
+        "terminateAfterPreemption",
+        "terminationGracePeriodSeconds",
+        "tolerations",
+        "tty",
+        "workingDir"
+      ],
+      "computeKeys": [
+        "cpuCoreLimit",
+        "cpuCoreRequest",
+        "cpuMemoryLimit",
+        "cpuMemoryRequest",
+        "extendedResources",
+        "gpuDevicesRequest",
+        "gpuMemoryLimit",
+        "gpuMemoryRequest",
+        "gpuPortionLimit",
+        "gpuPortionRequest",
+        "gpuRequestType",
+        "largeShmRequest"
+      ],
+      "envVarKeys": [
+        "configMap",
+        "description",
+        "exclude",
+        "name",
+        "podFieldRef",
+        "secret",
+        "userCredential",
+        "value"
+      ],
+      "enums": {
+        "gpuRequestType": [
+          "portion",
+          "memory"
+        ],
+        "distributedFramework": [
+          "MPI",
+          "PyTorch",
+          "TF",
+          "XGBoost",
+          "JAX"
+        ]
+      }
+    },
+    "inference": {
+      "path": "/api/v1/workloads/inferences",
+      "topKeys": [
+        "clusterId",
+        "name",
+        "projectId",
+        "spec",
+        "templateId",
+        "useGivenNameAsPrefix"
+      ],
+      "topRequired": [
+        "clusterId",
+        "name",
+        "projectId"
+      ],
+      "specKeys": [
+        "annotations",
+        "args",
+        "autoscaling",
+        "category",
+        "command",
+        "compute",
+        "createHomeDir",
+        "environmentVariables",
+        "exposedUrls",
+        "image",
+        "imagePullPolicy",
+        "imagePullSecrets",
+        "labels",
+        "nodeAffinityRequired",
+        "nodePools",
+        "nodeType",
+        "podAffinity",
+        "ports",
+        "preemptibility",
+        "priorityClass",
+        "probes",
+        "relatedUrls",
+        "security",
+        "servingConfiguration",
+        "servingPort",
+        "storage",
+        "tolerations",
+        "workingDir"
+      ],
+      "computeKeys": [
+        "cpuCoreLimit",
+        "cpuCoreRequest",
+        "cpuMemoryLimit",
+        "cpuMemoryRequest",
+        "extendedResources",
+        "gpuDevicesRequest",
+        "gpuMemoryLimit",
+        "gpuMemoryRequest",
+        "gpuPortionLimit",
+        "gpuPortionRequest",
+        "gpuRequestType",
+        "largeShmRequest"
+      ],
+      "servingPortKeys": [
+        "authorizationType",
+        "authorizedGroups",
+        "authorizedUsers",
+        "clusterLocalAccessOnly",
+        "container",
+        "protocol"
+      ],
+      "envVarKeys": [
+        "configMap",
+        "description",
+        "exclude",
+        "name",
+        "podFieldRef",
+        "secret",
+        "userCredential",
+        "value"
+      ],
+      "enums": {
+        "gpuRequestType": [
+          "portion",
+          "memory"
+        ],
+        "servingProtocol": [
+          "http",
+          "grpc"
+        ]
+      }
+    }
+  }
+}
