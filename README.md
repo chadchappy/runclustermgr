@@ -1,11 +1,23 @@
 # Run:ai Cluster Manager
 
-Multi-cluster workload placement for NVIDIA Run:ai. Submit a workload once; it goes to the connected cluster with the **most available GPUs** that has your project.
+Multi-cluster workload placement for NVIDIA Run:ai. Submit a workload once; by default it goes to the connected cluster with the **most available GPUs**, or you pick the cluster yourself.
 
 - Works across all clusters registered in one Run:ai control plane (v3.0+ API).
+- **Schedule automatically** (default) or choose a cluster by hand, per workload.
+- Optionally use any project on any cluster: a missing project is created on demand (`AUTO_CREATE_PROJECTS`).
 - Real telemetry only: free/total/allocated GPUs come from `GET /api/v1/nodes/telemetry`. Missing data shows as "unknown", never as a guess.
 - Creates workspaces, trainings, distributed trainings (PyTorch, TF, MPI, XGBoost, JAX) and inference workloads through the public Run:ai API.
 - Zero runtime dependencies (Node 22+ built-ins only). No `npm install`, no build step.
+
+## Using the UI
+
+Open the app (ingress URL, or `kubectl -n clustermgr port-forward svc/clustermgr 3000:80` then <http://localhost:3000>) and sign in.
+
+- **Cluster cards** show live free/total GPUs, running and pending workloads and the Run:ai version. The recommended cluster is highlighted.
+- **Schedule automatically** (switch, on by default) sends the workload to the cluster with the most free GPUs. Turn it off, click a cluster button, or click a cluster card to choose the cluster yourself; click the chosen card again to return to automatic.
+- **Placement preview** ranks every cluster for the current form values and explains each result, including when your manual choice is not the most open cluster.
+- **Project** lists every project from every cluster. With `AUTO_CREATE_PROJECTS` on, a hint shows where the project will be created on demand.
+- **Submit** (training, workspace, distributed, inference), then check **Recent workloads** across clusters.
 
 ## How placement works
 
@@ -17,7 +29,7 @@ A cluster is **eligible** if it is connected, the project exists on it (or `AUTO
 4. lowest allocation ratio
 5. name (deterministic)
 
-You can override the automatic choice: pick a cluster in the **Place on** selector (or click its card) and the workload goes there if it is eligible. With `AUTO_CREATE_PROJECTS=true` every project is usable on every connected cluster: when a workload lands on a cluster that has no project of that name, the app creates it there first (no guaranteed quota; it runs on over-quota capacity), waits for it to be ready, then submits. Per-user project visibility is not implemented yet: everyone sees all projects.
+You can override the automatic choice (see *Using the UI* below) and the workload goes to the cluster you pick if it is eligible. With `AUTO_CREATE_PROJECTS=true` every project is usable on every connected cluster: when a workload lands on a cluster that has no project of that name, the app creates it there first (no guaranteed quota; it runs on over-quota capacity), waits for it to be ready, then submits. Per-user project visibility is not implemented yet: everyone sees all projects.
 
 If nothing fits, the workload is **queued** on the least-loaded eligible cluster (`NO_FIT_STRATEGY=queue`, default) or rejected (`reject`). The UI shows the ranking and the reason for every cluster before you submit.
 
@@ -123,7 +135,7 @@ npm test                           # failures show exactly which fields changed
 | `GET /api/decisions` | recent placement decisions |
 | `GET /healthz`, `/readyz` | liveness; readiness (verifies Run:ai credentials) |
 
-Request body: `{ type: workspace|training|distributed|inference, name, project, image, gpus, cpu?, memory?, command?, args?, env?, nodePool?, framework?, workers?, port?, pinnedClusterId? }`. `gpus` below 1 requests a fractional GPU.
+Request body: `{ type: workspace|training|distributed|inference, name, project, image, gpus, cpu?, memory?, command?, args?, env?, framework?, workers?, port?, pinnedClusterId? }`. An optional `nodePool` is passed through to Run:ai untouched (the UI does not expose it). `gpus` below 1 requests a fractional GPU.
 
 ## More documentation
 

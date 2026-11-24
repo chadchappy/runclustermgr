@@ -10,7 +10,7 @@
 ## 2. Build and publish the image
 
 ```bash
-docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:2.0.0 --push .
+docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:2.1.1 --push .
 ```
 
 Use `linux/amd64,linux/arm64` for mixed fleets. Tags should be immutable: bump the version for every release rather than reusing `latest`. Pushing a `v*` git tag runs the same build in CI and publishes to `ghcr.io/<owner>/<repo>`.
@@ -19,7 +19,7 @@ Registry examples:
 
 | Registry | Setup |
 |---|---|
-| GHCR (public package) | nothing; set `IMAGE=ghcr.io/<owner>/<repo>:v2.0.0` |
+| GHCR (public package) | nothing; set `IMAGE=ghcr.io/<owner>/<repo>:v2.1.1` |
 | GHCR (private) | create a pull secret in the namespace, set `PULL_SECRET=<name>` |
 | ECR | `ECR_REGION=us-east-1` in the env file; the script creates and refreshes `clustermgr-regcred` on every deploy. ECR tokens last ~12h, so redeploy (or refresh the secret) before a pod has to pull on a node that lacks the image |
 
