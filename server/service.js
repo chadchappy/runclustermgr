@@ -107,11 +107,13 @@ export class ClusterManager {
 
       this.reservations.add(clusterId, demand);
       try {
-        const created = await this.client.post(path, body);
+        const raw = await this.client.post(path, body);
+        // /api/v2/workloads answers { metadata: { id, name, ... } }; v1 endpoints answer the workload itself
+        const created = raw?.metadata ? { ...raw, workloadId: raw.metadata.id, name: raw.metadata.name, clusterId: raw.metadata.clusterId } : raw;
         this.cache = null; // next read reflects the new workload
         const rec = {
           time: new Date(this.now()).toISOString(),
-          name: request.name, type: request.type, project: request.project, gpus: demand,
+          name: request.name || created?.name || null, type: request.type, project: request.project, gpus: demand,
           clusterId, clusterName: cluster.name,
           queued: decision.queued && i === 0,
           fallbackFrom: attempts.length ? attempts[0].clusterName : null,

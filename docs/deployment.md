@@ -12,7 +12,7 @@
 ## 2. Build and publish the image
 
 ```bash
-docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:2.1.1 --push .
+docker buildx build --platform linux/amd64 -t <registry>/runclustermgr:2.2.3 --push .
 ```
 
 Use `linux/amd64,linux/arm64` for mixed fleets. Tags should be immutable: bump the version for every release rather than reusing `latest`. Pushing a `v*` git tag runs the same build in CI and publishes to `ghcr.io/<owner>/<repo>`.

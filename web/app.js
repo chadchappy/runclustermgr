@@ -1,9 +1,9 @@
-// Cluster Manager UI. No dependencies; every piece of server data is rendered
+// Run:ai Multi-Cluster Scheduling Portal UI. No dependencies; every piece of server data is rendered
 // with textContent (never innerHTML), so API data cannot inject markup.
 
 const $ = (s, el = document) => el.querySelector(s);
 const form = $('#form');
-const state = { config: null, clusters: [], projects: [], preview: null, pinned: '', lastUpdate: 0, loadError: null, submitting: false };
+const state = { config: null, clusters: [], projects: [], preview: null, pinned: '', lastUpdate: 0, loadError: null, submitting: false, texts: { yaml: '', cli: '' }, validation: null };
 
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -123,6 +123,10 @@ function renderProjects() {
 function updateProjectHint() {
   const p = state.projects.find((x) => x.name === form.elements.project.value);
   const hint = $('#projHint');
+  if (isEditor()) {
+    hint.textContent = currentMode() === 'cli' ? 'Used when the command has no -p flag; -p in the command wins.' : 'The project the manifest is submitted to.';
+    return;
+  }
   if (!p) { hint.textContent = ''; return; }
   hint.textContent = `Exists on ${p.clusters.join(', ') || 'no cluster'}.` + (p.missingOn?.length ? ` Created automatically on ${p.missingOn.join(', ')} if the workload runs there.` : '');
 }
@@ -141,6 +145,7 @@ function parseEnv(text) {
 }
 
 function readRequest({ forPreview = false } = {}) {
+  if (isEditor()) return editorBody({ forPreview });
   const f = form.elements;
   const type = form.querySelector('input[name=type]:checked').value;
   const req = {
@@ -176,6 +181,14 @@ async function runPreview() {
   let req;
   try { req = readRequest({ forPreview: true }); } catch (e) { msg.textContent = e.message; return; }
   if (!req.project) { msg.textContent = 'Choose a project to see where this would run.'; return; }
+  if (isEditor() && !(state.validation && state.validation.ok)) {
+    state.preview = null;
+    msg.textContent = $('#edText').value.trim() ? 'Fix the problems above to see where this would run.' : 'Enter a workload to see where it would run.';
+    msg.className = 'place-msg muted';
+    $('#ranking').replaceChildren();
+    renderPlaceOn(); renderClusters();
+    return;
+  }
   try {
     const p = await api('POST', '/api/placement', req);
     if (seq !== previewSeq) return;
@@ -219,10 +232,181 @@ function syncGpuUi() {
   $('#gpuHint').textContent = v > 0 && v < 1 ? `Fractional: ${v * 100}% of one GPU.` : v === 0 ? 'CPU-only workload.' : '';
 }
 
+const currentMode = () => form.querySelector('input[name=type]:checked').value;
+const isEditor = (m = currentMode()) => m === 'yaml' || m === 'cli';
+
 function syncType() {
-  const type = form.querySelector('input[name=type]:checked').value;
+  const type = currentMode();
   $('.dist').hidden = type !== 'distributed';
   $('.inf').hidden = type !== 'inference';
+  form.classList.toggle('mode-editor', isEditor(type));
+  form.classList.toggle('mode-yaml', type === 'yaml');
+  form.classList.toggle('mode-cli', type === 'cli');
+}
+
+// ---------- YAML / CLI editor ----------
+const EXAMPLES = {
+  yaml: `# One workload per submission. Any Kubernetes workload object Run:ai supports.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hello-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: main
+        image: busybox:1.36
+        command: ["sleep", "300"]
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+`,
+  cli: (project) => `runai training submit hello-job -p ${project || '<project>'} -i busybox:1.36 -g 1 --command -- sleep 300`,
+};
+
+function editorBody({ forPreview = false } = {}) {
+  const mode = currentMode();
+  const body = { source: mode, text: $('#edText').value, project: form.elements.project.value };
+  const gpus = $('#edGpus').value;
+  if (mode === 'yaml' && gpus !== '') body.gpus = Number(gpus);
+  if (!forPreview && state.pinned) body.pinnedClusterId = state.pinned;
+  return body;
+}
+
+function summaryText(sum, mode) {
+  if (!sum) return '';
+  if (mode === 'yaml') return `${sum.kind} “${sum.name}” · ${sum.gpus === null ? 'GPUs unknown' : `${fmt(sum.gpus)} GPU${sum.gpus === 1 ? '' : 's'}`}`;
+  return `${sum.type}${sum.framework ? ` (${sum.framework})` : ''} “${sum.name}” · project ${sum.project} · ${fmt(sum.gpus)} GPU${sum.gpus === 1 ? '' : 's'}${sum.workers ? ` × ${sum.workers} workers` : ''}`;
+}
+
+function renderGutter() {
+  const ta = $('#edText');
+  const n = Math.max(1, ta.value.split('\n').length);
+  const bad = new Set((state.validation?.errors || []).map((e) => e.line).filter(Boolean));
+  const gut = $('#gutter');
+  const frag = document.createDocumentFragment();
+  for (let i = 1; i <= n; i++) frag.append(h('span', { class: `ln${bad.has(i) ? ' bad' : ''}` }, String(i)));
+  gut.replaceChildren(frag);
+  gut.scrollTop = ta.scrollTop;
+}
+
+function jumpToLine(line, column) {
+  const ta = $('#edText');
+  const lines = ta.value.split('\n');
+  let start = 0;
+  for (let i = 0; i < line - 1 && i < lines.length; i++) start += lines[i].length + 1;
+  const col = Math.max(0, (column || 1) - 1);
+  ta.focus();
+  ta.setSelectionRange(start + Math.min(col, (lines[line - 1] || '').length), start + (lines[line - 1] || '').length);
+  ta.scrollTop = Math.max(0, (line - 3) * 20);
+  $('#gutter').scrollTop = ta.scrollTop;
+}
+
+function renderValidation() {
+  const mode = currentMode();
+  if (!isEditor(mode)) return;
+  const v = state.validation;
+  const text = $('#edText').value;
+  const status = $('#edStatus');
+  const errs = $('#edErrors');
+  const warns = $('#edWarnings');
+  renderGutter();
+  if (!text.trim()) {
+    status.className = 'edstatus muted';
+    status.textContent = mode === 'yaml' ? 'Paste a Kubernetes manifest, or insert the example.' : 'Type or paste a runai command, or insert the example.';
+    errs.hidden = true; warns.hidden = true;
+    $('#edGpuHint').textContent = '';
+    return;
+  }
+  if (!v) { status.className = 'edstatus muted'; status.textContent = 'Checking…'; return; }
+  if (v.ok) {
+    status.className = 'edstatus ok';
+    status.textContent = `✓ Valid: ${summaryText(v.summary, mode)}`;
+    errs.hidden = true;
+  } else {
+    status.className = 'edstatus bad';
+    status.textContent = `✗ ${v.errors.length} problem${v.errors.length === 1 ? '' : 's'} to fix before this can be submitted`;
+    errs.replaceChildren(...v.errors.map((e) => h('li', {},
+      e.line ? h('button', { type: 'button', class: 'link', 'data-line': e.line, 'data-col': e.column || 1 }, `Line ${e.line}${e.column ? `:${e.column}` : ''}`) : null,
+      e.line ? ' — ' : '', e.message)));
+    errs.hidden = false;
+  }
+  const w = v.warnings || [];
+  warns.replaceChildren(...w.map((m) => h('li', {}, m)));
+  warns.hidden = w.length === 0;
+  if (mode === 'yaml') {
+    const g = v.ok ? v.summary?.gpus : null;
+    $('#edGpuHint').textContent = !v.ok ? '' : g === null ? 'GPUs not found in the manifest: enter how many this needs so placement can find room.' : `Detected ${fmt(g)} GPU${g === 1 ? '' : 's'} from the manifest. Enter a number only to override.`;
+  }
+}
+
+let validateSeq = 0;
+let validateTimer;
+function validateSoon() { clearTimeout(validateTimer); validateTimer = setTimeout(validateNow, 300); }
+async function validateNow() {
+  const mode = currentMode();
+  if (!isEditor(mode)) return;
+  const seq = ++validateSeq;
+  const text = $('#edText').value;
+  if (!text.trim()) { state.validation = null; renderValidation(); runPreview(); return; }
+  try {
+    const r = await api('POST', '/api/validate', editorBody({ forPreview: true }));
+    if (seq !== validateSeq) return;
+    state.validation = r;
+  } catch (e) {
+    if (seq !== validateSeq) return;
+    state.validation = { ok: false, errors: [{ line: null, column: null, message: e.message }], warnings: [] };
+  }
+  renderValidation();
+  runPreview();
+}
+
+function renderHelp() {
+  const mode = currentMode();
+  const help = $('#edHelp');
+  if (mode === 'yaml') {
+    $('#edHelpTitle').textContent = 'What is checked';
+    help.replaceChildren(
+      h('div', {}, 'The same format as ', h('code', {}, 'runai workload submit -f'), ': a Kubernetes manifest for a single workload. The project is the one chosen above.'),
+      h('ul', {},
+        h('li', {}, 'YAML syntax: indentation, tabs, duplicate keys, unclosed brackets and quotes, with line and column.'),
+        h('li', {}, 'One document, a mapping with apiVersion, kind and metadata.name (or generateName).'),
+        h('li', {}, 'Kinds that are not workloads (Secret, ConfigMap, Service, Namespace, …) are refused.'),
+        h('li', {}, 'GPUs are counted from nvidia.com/gpu limits and requests, multiplied by replicas or parallelism.')),
+      h('div', {}, 'Run:ai still validates the manifest when it is submitted and reports anything it rejects.'));
+  } else {
+    $('#edHelpTitle').textContent = 'Supported commands and flags';
+    const cmds = (state.config?.cli?.commands || []).filter((c) => !/^(training|inference) submit$/.test(c));
+    help.replaceChildren(
+      h('div', {}, `Checked against the Run:ai CLI (${state.config?.cli?.version || 'runai-cli'}). Commands are parsed, never executed.`),
+      h('ul', {}, ...cmds.map((c) => h('li', {}, h('code', {}, `runai ${c}`)))),
+      h('div', {}, 'Flags: ', h('code', {}, '-p/--project -i/--image -g/--gpu-devices-request --gpu-portion-request --cpu-core-request --cpu-memory-request -e/--environment-variable --command --name-prefix'),
+        ' plus ', h('code', {}, '--workers'), ' (pytorch, mpi) and ', h('code', {}, '--serving-port'), ' (inference). Other valid flags are refused rather than silently dropped; use the YAML tab for advanced options.'),
+      h('pre', {}, 'runai training pytorch submit my-job -p team-a -i nvcr.io/nvidia/pytorch:24.05-py3 \\\n  --workers 2 -g 1 --command -- python train.py'));
+  }
+}
+
+function setMode() {
+  const mode = currentMode();
+  syncType();
+  if (isEditor(mode)) {
+    const ta = $('#edText');
+    ta.value = state.texts[mode];
+    $('#edTitle').textContent = mode === 'yaml' ? 'Kubernetes manifest (YAML)' : 'Run:ai CLI command';
+    ta.setAttribute('aria-label', $('#edTitle').textContent);
+    ta.placeholder = mode === 'yaml' ? 'apiVersion: batch/v1\nkind: Job\n…' : 'runai workspace submit my-job -p my-project -i ubuntu -g 1';
+    $('#projHint').dataset.mode = mode;
+    state.validation = null;
+    renderHelp();
+    renderValidation();
+    validateNow();
+  } else {
+    state.validation = null;
+    updateProjectHint();
+  }
+  schedulePreview();
 }
 
 function newName() { return `job-${Math.random().toString(36).slice(2, 6)}`; }
@@ -235,6 +419,15 @@ async function onSubmit(ev) {
   errs.hidden = true; result.hidden = true;
   let req;
   try { req = readRequest(); } catch (e) { errs.replaceChildren(h('li', {}, e.message)); errs.hidden = false; return; }
+  if (isEditor()) {
+    if (!state.validation) await validateNow();
+    if (!state.validation?.ok) {
+      errs.replaceChildren(h('li', {}, $('#edText').value.trim() ? 'Fix the problems listed under the editor first.' : 'Enter a workload first.'));
+      errs.hidden = false;
+      return;
+    }
+  }
+  const workloadName = req.name || state.validation?.summary?.name || '';
   state.submitting = true;
   $('#submit').disabled = true; $('#busy').hidden = false;
   try {
@@ -245,12 +438,12 @@ async function onSubmit(ev) {
     result.className = 'result';
     result.replaceChildren(...[
       h('div', {}, h('b', {}, `Submitted to ${p.chosenName}`), state.pinned ? ' (chosen by you)' : ' (scheduled automatically)', p.queued ? ' — waiting for GPUs (queued)' : ''),
-      h('div', { class: 'muted' }, `${req.name} · ${out.workload?.workloadId || ''}`,
-        chosen?.createsProject ? ` · created project "${req.project}" on ${p.chosenName}` : '',
+      h('div', { class: 'muted' }, `${out.workload?.name || workloadName} · ${out.workload?.workloadId || ''}`,
+        chosen?.createsProject ? ` · created project "${req.project || form.elements.project.value}" on ${p.chosenName}` : '',
         p.attempts?.length ? ` · fell back from ${p.attempts.map((a) => a.clusterName).join(', ')}` : ''),
       link ? h('div', {}, link) : null].filter(Boolean));
     result.hidden = false;
-    form.elements.name.value = newName();
+    if (!isEditor()) form.elements.name.value = newName();
     await Promise.all([refresh({ force: true }), loadProjects()]);
     runPreview();
   } catch (e) {
@@ -347,11 +540,25 @@ async function init() {
   } catch { /* shown by refresh */ }
 
   await loadProjects();
+  $('#edText').addEventListener('scroll', () => { $('#gutter').scrollTop = $('#edText').scrollTop; });
+  $('#edText').addEventListener('keydown', (e) => {
+    // Tab inserts two spaces (YAML forbids tabs); Escape leaves the editor so keyboard users are not trapped
+    if (e.key === 'Tab' && !e.shiftKey && currentMode() === 'yaml') { e.preventDefault(); e.target.setRangeText('  ', e.target.selectionStart, e.target.selectionEnd, 'end'); e.target.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
+  $('#edExample').addEventListener('click', () => {
+    const mode = currentMode();
+    const ex = mode === 'yaml' ? EXAMPLES.yaml : EXAMPLES.cli(form.elements.project.value);
+    $('#edText').value = ex; state.texts[mode] = ex; state.validation = null; renderGutter(); validateNow();
+  });
+  $('#edClear').addEventListener('click', () => { const mode = currentMode(); $('#edText').value = ''; state.texts[mode] = ''; state.validation = null; renderValidation(); validateNow(); $('#edText').focus(); });
+  $('#edErrors').addEventListener('click', (e) => { const b = e.target.closest('button[data-line]'); if (b) jumpToLine(Number(b.dataset.line), Number(b.dataset.col)); });
   form.addEventListener('submit', onSubmit);
   form.addEventListener('input', (e) => {
     if (e.target.name === 'gpus') syncGpuUi();
-    if (e.target.name === 'type') syncType();
-    if (e.target.name === 'project') updateProjectHint();
+    if (e.target.id === 'edText') { state.texts[currentMode()] = e.target.value; state.validation = null; renderGutter(); validateSoon(); return; }
+    if (e.target.id === 'edGpus') { validateSoon(); return; }
+    if (e.target.name === 'type') { setMode(); return; }
+    if (e.target.name === 'project') { updateProjectHint(); if (isEditor()) validateSoon(); }
     schedulePreview();
   });
   $('#refresh').addEventListener('click', () => { refresh({ force: true }); loadProjects(); });

@@ -388,5 +388,26 @@
     "nodePoolRequired": [
       "id"
     ]
+  },
+  "manifestCreate": {
+    "path": "/api/v2/workloads",
+    "topKeys": [
+      "manifest",
+      "manifestBase64Encoded",
+      "metadata"
+    ],
+    "topRequired": [
+      "metadata"
+    ],
+    "metadataKeys": [
+      "category",
+      "clusterId",
+      "configuration",
+      "name",
+      "preemptibility",
+      "priority",
+      "projectId",
+      "useGivenNameAsPrefix"
+    ]
   }
 }

@@ -88,3 +88,10 @@ test('query arrays become repeated params', async () => {
   await c.get('/api/v1/nodes/telemetry', { telemetryType: 'FREE_GPUS', groupBy: ['ClusterId', 'Nodepool'] });
   assert.ok(mock.state.calls.some((x) => x.includes('groupBy=ClusterId&groupBy=Nodepool')));
 });
+
+test('an error response that is an ARRAY of errors still surfaces Run:ai\'s own message (live /api/v2 behaviour)', async () => {
+  const mock = createMockRunai();
+  const arr = (u, i) => (new URL(u).pathname === '/api/v1/token' ? mock.fetch(u, i) : Promise.resolve(new Response(JSON.stringify([{ code: 400, message: 'projectId and clusterId are mutually exclusive, provide only one' }]), { status: 400 })));
+  const c = mk(mock, { fetchImpl: arr });
+  await assert.rejects(c.post('/api/v2/workloads', {}), /mutually exclusive, provide only one/);
+});

@@ -1,6 +1,6 @@
 {
   "name": "runai-cluster-manager",
-  "version": "2.1.1",
+  "version": "2.2.3",
   "description": "Multi-cluster placement and submission for NVIDIA Run:ai: send each workload to the cluster with the most available GPUs.",
   "private": true,
   "type": "module",
@@ -9,7 +9,8 @@
     "start": "node server/index.js",
     "dev": "MOCK=1 node --watch server/index.js",
     "test": "node --test",
-    "contract": "node scripts/gen-contract.js"
+    "contract": "node scripts/gen-contract.js",
+    "cli-spec": "node scripts/gen-cli-spec.mjs"
   },
   "license": "MIT"
 }

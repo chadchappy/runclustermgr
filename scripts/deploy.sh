@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Run:ai Cluster Manager to a Kubernetes cluster.
+# Deploy the Run:ai Multi-Cluster Scheduling Portal to a Kubernetes cluster.
 #
 #   scripts/deploy.sh environments/<name>.env      # recommended
 #   scripts/deploy.sh                              # variables from the shell

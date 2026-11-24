@@ -1,4 +1,4 @@
-# Run:ai Cluster Manager
+# Run:ai Multi-Cluster Scheduling Portal
 
 Multi-cluster workload placement for NVIDIA Run:ai. Submit a workload once; by default it goes to the connected cluster with the **most available GPUs**, or you pick the cluster yourself.
 
@@ -7,7 +7,8 @@ Multi-cluster workload placement for NVIDIA Run:ai. Submit a workload once; by d
 - Optionally use any project on any cluster: a missing project is created on demand (`AUTO_CREATE_PROJECTS`).
 - Real telemetry only: free/total/allocated GPUs come from `GET /api/v1/nodes/telemetry`. Missing data shows as "unknown", never as a guess.
 - Creates workspaces, trainings, distributed trainings (PyTorch, TF, MPI, XGBoost, JAX) and inference workloads through the public Run:ai API.
-- Zero runtime dependencies (Node 22+ built-ins only). No `npm install`, no build step.
+- No `npm install` and no build step: Node 22+ built-ins plus one vendored library (js-yaml, MIT, in `server/vendor/`).
+- **Paste a Kubernetes manifest (YAML) or a `runai` CLI command** instead of filling the form, with live syntax checking.
 
 ## Using the UI
 
@@ -17,7 +18,19 @@ Open the app (ingress URL, or `kubectl -n clustermgr port-forward svc/clustermgr
 - **Schedule automatically** (switch, on by default) sends the workload to the cluster with the most free GPUs. Turn it off, click a cluster button, or click a cluster card to choose the cluster yourself; click the chosen card again to return to automatic.
 - **Placement preview** ranks every cluster for the current form values and explains each result, including when your manual choice is not the most open cluster.
 - **Project** lists every project from every cluster. With `AUTO_CREATE_PROJECTS` on, a hint shows where the project will be created on demand.
-- **Submit** (training, workspace, distributed, inference), then check **Recent workloads** across clusters.
+- **Submit** with the form (workspace, training, distributed, inference) or by pasting **YAML** or a **Run:ai CLI** command (see below), then check **Recent workloads** across clusters.
+
+## YAML and CLI input
+
+The **YAML** and **Run:ai CLI** tiles take the same input the Run:ai CLI does, so existing manifests and commands can be pasted as they are. They share the cluster choice (automatic or manual), the project selector and the placement preview with the form.
+
+Both are checked as you type. Errors name the line and column, are marked in the editor gutter, and you can click one to jump to it. Submit stays blocked until the input is valid.
+
+**YAML tile.** A Kubernetes manifest for one workload: the format `runai workload submit -f` takes (submitted through `POST /api/v2/workloads`). The project is the one selected above. Checked: YAML syntax (indentation, tabs, duplicate keys, unclosed quotes and brackets), a single document, `apiVersion`, `kind`, `metadata.name` (or `generateName`), and that the kind is a workload (not a Secret, Service, Namespace, ...). GPUs are counted from `nvidia.com/gpu` limits/requests times replicas or parallelism so placement knows how much room is needed; enter "GPUs for placement" to override. Run:ai still validates the content when it receives it and its message is shown if it rejects the manifest.
+
+**CLI tile.** A `runai ... submit ...` command line (CLI 3.x): `workspace`, `training` (standard, `pytorch`, `mpi`) and `inference` submits. It is parsed, never executed through a shell. Supported flags: `-p/--project`, `-i/--image`, `-g/--gpu-devices-request`, `--gpu-portion-request`, `--cpu-core-request`, `--cpu-memory-request`, `-e/--environment-variable`, `--command` with `-- args`, `--name-prefix`, `--workers` (pytorch, mpi) and `--serving-port` (inference). Without `-p` the selected project is used. Checked against the CLI's own definitions (`contract/runai-cli.json`, generated from `runai --help`): unknown commands and flags with did-you-mean suggestions, value types (numbers, durations, enums), missing name/project/image, shell syntax that cannot be honoured (pipes, `&&`, `$VARS`, unterminated quotes). Flags that are valid in the CLI but not supported here (volumes, templates, node pools, ...) are **refused rather than silently dropped**; use the YAML tile for those. `runai workload submit -f file.yaml` reads a file from your disk, so paste the manifest into the YAML tile instead.
+
+Regenerate the CLI model after upgrading the CLI: `node scripts/gen-cli-spec.mjs` then `npm test`.
 
 ## How placement works
 
@@ -131,8 +144,9 @@ npm test                           # failures show exactly which fields changed
 |---|---|
 | `GET /api/clusters` | capacity snapshot (`?refresh=1` bypasses cache) |
 | `GET /api/projects` | projects and the clusters that have them |
+| `POST /api/validate` | syntax-check pasted YAML or a CLI command: `{ source: 'yaml'\|'cli', text, project? }` returns errors with line/column, warnings and a summary |
 | `POST /api/placement` | dry run: ranking and reasons, nothing is submitted |
-| `POST /api/workloads` | place and submit; `pinnedClusterId` forces a cluster |
+| `POST /api/workloads` | place and submit; `pinnedClusterId` forces a cluster. Body is a form request, or `{ source: 'yaml'\|'cli', text, project?, gpus? }` |
 | `GET /api/workloads` | recent workloads across clusters |
 | `GET /api/decisions` | recent placement decisions |
 | `GET /healthz`, `/readyz` | liveness; readiness (verifies Run:ai credentials) |
@@ -155,6 +169,10 @@ Request body: `{ type: workspace|training|distributed|inference, name, project, 
 - Clusters must be registered in the same control plane. Separate control planes are not aggregated.
 - Reservations are per process; running several replicas would make bursts less even.
 - Live data depends on the telemetry types `TOTAL_GPUS`, `FREE_GPUS`, `ALLOCATED_GPUS`, `READY_GPUS` being available.
+
+## Branding
+
+The NVIDIA wordmark and favicon in `web/assets/` are NVIDIA brand assets copied unmodified from the Run:ai product UI. They remain NVIDIA trademarks; use them in line with NVIDIA's brand guidelines, or replace the files.
 
 ## Security notes
 

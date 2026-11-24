@@ -5,9 +5,11 @@
 // It enforces the generated OpenAPI contract: unknown fields get a 400, exactly
 // like the real API, so payload regressions fail here instead of in production.
 import { readFileSync } from 'node:fs';
+import { parseManifest, detectManifestGpus } from './intake.js';
 
 const contract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).endpoints;
 const projectContract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).projectCreate;
+const manifestContract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).manifestCreate;
 const PATH_TO_TYPE = Object.fromEntries(Object.entries(contract).map(([t, e]) => [e.path, t]));
 
 const json = (status, body) =>
@@ -131,6 +133,42 @@ export function createMockRunai({
       const off = Number(u.searchParams.get('offset') || 0);
       const lim = Number(u.searchParams.get('limit') || 100);
       return json(200, { workloads: list.slice(off, off + lim), ...(off + lim < list.length ? { next: off + lim } : {}) });
+    }
+
+    if (path === '/api/v2/workloads' && method === 'POST') {
+      const bad = [];
+      for (const k of Object.keys(body || {})) if (!manifestContract.topKeys.includes(k)) bad.push(k);
+      for (const k of manifestContract.topRequired) if (body?.[k] === undefined) bad.push(`missing:${k}`);
+      for (const k of Object.keys(body?.metadata || {})) if (!manifestContract.metadataKeys.includes(k)) bad.push(`metadata.${k}`);
+      if (body?.manifest !== undefined && body?.manifestBase64Encoded !== undefined) bad.push('manifest and manifestBase64Encoded are mutually exclusive');
+      if (body?.manifest === undefined && body?.manifestBase64Encoded === undefined) bad.push('missing:manifest');
+      if (bad.length) return json(400, { code: 400, message: `invalid request: ${bad.join(', ')}` });
+      // Like the real API: projectId and clusterId are mutually exclusive; the project selects the cluster.
+      if (body.metadata.projectId && body.metadata.clusterId) {
+        return json(400, [{ code: 400, message: 'projectId and clusterId are mutually exclusive, provide only one', complianceIssues: [{ field: 'project', details: 'projectId and clusterId are mutually exclusive, provide only one' }] }]);
+      }
+      const project = state.projects.find((p) => p.id === body.metadata.projectId);
+      if (!project) return json(400, { code: 400, message: 'unknown projectId' });
+      const cluster = state.clusters.find((c) => c.uuid === project.clusterId);
+      const inj = state.failSubmit[cluster.uuid];
+      if (inj) { if (inj.once) delete state.failSubmit[cluster.uuid]; return json(inj.status, { code: inj.status, message: inj.message || 'injected failure' }); }
+      if (cluster.state !== 'Connected') return json(503, { code: 503, message: 'cluster not connected' });
+      let text;
+      try { text = body.manifestBase64Encoded !== undefined ? Buffer.from(body.manifestBase64Encoded, 'base64').toString('utf8') : JSON.stringify(body.manifest); } catch { return json(400, { code: 400, message: 'manifest is not valid base64' }); }
+      const parsed = parseManifest(text);
+      if (!parsed.ok) return json(400, { code: 400, message: `invalid manifest: ${parsed.errors[0].message}` });
+      const doc = (await import('./vendor/js-yaml.mjs')).load(text);
+      const need = detectManifestGpus(doc).gpus ?? 0;
+      const fits = free(cluster) >= need;
+      if (fits) { if (cluster.pools) { /* flat clusters only in this mock */ } else cluster.allocated += need; }
+      const id = `wl-${state.workloads.length + 1}`;
+      const name = body.metadata.name || doc.metadata?.name || `workload-${id}`;
+      state.workloads.push({
+        workloadId: id, id, name, clusterId: cluster.uuid, projectId: project.id, projectName: project.name,
+        actualPhase: fits ? 'Running' : 'Pending', phase: fits ? 'Running' : 'Pending', desiredPhase: 'Running',
+        type: doc.kind, createdAt: new Date().toISOString(), allocatedResources: { gpu: fits ? need : 0 }, viaManifest: true,
+      });
+      return json(202, { metadata: { id, name, projectId: project.id, clusterId: cluster.uuid, projectName: project.name }, desiredPhase: 'Running' });
     }
 
     const type = PATH_TO_TYPE[path];

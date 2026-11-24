@@ -69,5 +69,15 @@ const projectCreate = {
   nodePoolRequired: flat(resItem.properties.nodePool).required.sort(),
 };
 
-writeFileSync(out, JSON.stringify({ generatedFrom: `${s.info.title} ${s.info.version}`, endpoints, projectCreate }, null, 2) + '\n');
+// Manifest (Kubernetes YAML) submission: POST /api/v2/workloads, the endpoint `runai workload submit -f` uses
+const v2 = flat(s.paths['/api/v2/workloads'].post.requestBody.content['application/json'].schema);
+const v2meta = flat(v2.properties.metadata);
+const manifestCreate = {
+  path: '/api/v2/workloads',
+  topKeys: Object.keys(v2.properties).sort(),
+  topRequired: v2.required.sort(),
+  metadataKeys: Object.keys(v2meta.properties).sort(),
+};
+
+writeFileSync(out, JSON.stringify({ generatedFrom: `${s.info.title} ${s.info.version}`, endpoints, projectCreate, manifestCreate }, null, 2) + '\n');
 console.log(`wrote ${out}`);

@@ -2,7 +2,7 @@
 // payload. Field names here are checked against the OpenAPI spec by
 // test/contract.test.js (using contract/workload-contract.json).
 
-export const TYPES = ['workspace', 'training', 'distributed', 'inference'];
+export const TYPES = ['workspace', 'training', 'distributed', 'inference', 'manifest'];
 export const FRAMEWORKS = ['PyTorch', 'TF', 'MPI', 'XGBoost', 'JAX'];
 
 const ENDPOINTS = {
@@ -10,6 +10,7 @@ const ENDPOINTS = {
   training: '/api/v1/workloads/trainings',
   distributed: '/api/v1/workloads/distributed',
   inference: '/api/v1/workloads/inferences',
+  manifest: '/api/v2/workloads', // Kubernetes manifest: the endpoint `runai workload submit -f` uses
 };
 
 const NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -19,6 +20,15 @@ const ENV_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export function validateRequest(r) {
   const errors = [];
   if (!r || typeof r !== 'object') return ['request body must be a JSON object'];
+  if (r.type === 'manifest') {
+    // A manifest is checked in depth by server/intake.js; here only what submission needs.
+    if (typeof r.project !== 'string' || !r.project) errors.push('project is required');
+    if (typeof r.manifestText !== 'string' || !r.manifestText.trim()) errors.push('manifest is required');
+    if (r.name !== null && r.name !== undefined && (typeof r.name !== 'string' || r.name.length > 253)) errors.push('manifest name is invalid');
+    const g = Number(r.gpus ?? 0);
+    if (!Number.isFinite(g) || g < 0 || g > 4096) errors.push('gpus must be a number of 0 or more');
+    return errors;
+  }
   if (!TYPES.includes(r.type)) errors.push(`type must be one of ${TYPES.join(', ')}`);
   if (typeof r.name !== 'string' || !NAME_RE.test(r.name) || r.name.length > 63) {
     errors.push('name must be lowercase letters, digits or "-" (max 63 chars, start/end alphanumeric)');
@@ -48,6 +58,7 @@ export function validateRequest(r) {
 
 // Total GPU units this request will occupy (used for placement).
 export function gpuDemand(r) {
+  if (r.type === 'manifest') return Number(r.gpus ?? 0); // total, already counted over replicas
   const per = Number(r.gpus ?? 0);
   if (r.type === 'distributed') {
     const workers = Number(r.workers ?? 2);
@@ -80,6 +91,18 @@ export function buildPayload(r, { projectId, clusterId }) {
   const errors = validateRequest(r);
   if (errors.length) throw Object.assign(new Error(errors.join('; ')), { validation: errors });
 
+  if (r.type === 'manifest') {
+    return {
+      path: ENDPOINTS.manifest,
+      body: {
+        // projectId and clusterId are mutually exclusive on this endpoint: a project belongs to one
+        // cluster, so the project id alone selects both (Run:ai rejects the pair with HTTP 400)
+        metadata: { ...(r.name ? { name: r.name } : {}), projectId },
+        manifestBase64Encoded: Buffer.from(r.manifestText, 'utf8').toString('base64'),
+      },
+    };
+  }
+
   const spec = {
     image: r.image.trim(),
     compute: compute(r),
@@ -91,7 +114,7 @@ export function buildPayload(r, { projectId, clusterId }) {
   }
   if (r.nodePool) spec.nodePools = [r.nodePool];
 
-  const body = { name: r.name, projectId, clusterId, spec };
+  const body = { name: r.name, ...(r.namePrefix ? { useGivenNameAsPrefix: true } : {}), projectId, clusterId, spec };
 
   if (r.type === 'distributed') {
     spec.distributedFramework = r.framework || 'PyTorch';
@@ -113,7 +136,7 @@ export function buildProjectPayload({ name, clusterId, nodePoolId, nodePoolName,
   return {
     name,
     clusterId,
-    description: 'Created on demand by Run:ai Cluster Manager',
+    description: 'Created on demand by the Run:ai Multi-Cluster Scheduling Portal',
     resources: [{ nodePool: { id: String(nodePoolId), ...(nodePoolName ? { name: nodePoolName } : {}) }, gpu }],
   };
 }

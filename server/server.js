@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { timingSafeEqual } from 'node:crypto';
 import { extname, join, normalize, resolve } from 'node:path';
 import { HttpError } from './service.js';
+import { resolveSource, formatErrors, MAX_TEXT, CLI_VERSION, SUPPORTED_COMMANDS } from './intake.js';
 
 const WEB_ROOT = resolve(new URL('../web', import.meta.url).pathname);
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
@@ -47,12 +48,22 @@ function send(res, status, body, headers = {}) {
   res.end(isStr ? body : JSON.stringify(body));
 }
 
-export function createApp({ manager, config, version = '2.1.1', log = () => {} }) {
+// A form request is used as is; a pasted manifest/command is parsed and checked first.
+function resolveBody(body) {
+  if (body && (body.source === 'yaml' || body.source === 'cli')) {
+    const r = resolveSource(body);
+    if (!r.ok) throw new HttpError(400, body.source === 'yaml' ? 'The manifest has errors' : 'The command has errors', formatErrors(r.errors));
+    return { ...r.request, ...(body.pinnedClusterId ? { pinnedClusterId: body.pinnedClusterId } : {}) };
+  }
+  return body;
+}
+
+export function createApp({ manager, config, version = '2.2.3', log = () => {} }) {
   async function api(req, res, url) {
     const { pathname } = url;
     if (req.method === 'GET' && pathname === '/api/config') {
       return send(res, 200, {
-        version, mock: config.mock, controlPlane: config.controlPlane || null,
+        version, mock: config.mock, limits: { maxTextBytes: MAX_TEXT }, cli: { version: CLI_VERSION, commands: SUPPORTED_COMMANDS }, controlPlane: config.controlPlane || null,
         policy: { noFitStrategy: config.policy.noFitStrategy, excludeClusters: config.policy.excludeClusters, autoCreateProjects: !!config.policy.autoCreateProjects },
       });
     }
@@ -60,8 +71,15 @@ export function createApp({ manager, config, version = '2.1.1', log = () => {} }
       return send(res, 200, await manager.clusters({ maxAgeMs: url.searchParams.get('refresh') === '1' ? 0 : undefined }));
     }
     if (req.method === 'GET' && pathname === '/api/projects') return send(res, 200, await manager.projects());
-    if (req.method === 'POST' && pathname === '/api/placement') return send(res, 200, await manager.place(await readJson(req)));
-    if (req.method === 'POST' && pathname === '/api/workloads') return send(res, 202, await manager.submit(await readJson(req)));
+    if (req.method === 'POST' && pathname === '/api/placement') return send(res, 200, await manager.place(resolveBody(await readJson(req))));
+    if (req.method === 'POST' && pathname === '/api/workloads') return send(res, 202, await manager.submit(resolveBody(await readJson(req))));
+    if (req.method === 'POST' && pathname === '/api/validate') {
+      const body = await readJson(req);
+      if (body.source !== 'yaml' && body.source !== 'cli') throw new HttpError(400, 'source must be "yaml" or "cli"');
+      const r = resolveSource(body);
+      const { manifestText, ...request } = r.request || {};
+      return send(res, 200, { ok: r.ok, errors: r.errors, warnings: r.warnings, summary: r.summary, request: r.ok ? request : null });
+    }
     if (req.method === 'GET' && pathname === '/api/workloads') return send(res, 200, await manager.workloads());
     if (req.method === 'GET' && pathname === '/api/decisions') return send(res, 200, manager.recentDecisions());
     throw new HttpError(404, 'not found');
@@ -85,7 +103,7 @@ export function createApp({ manager, config, version = '2.1.1', log = () => {} }
     try {
       if (url.pathname === '/healthz') return send(res, 200, { status: 'ok' });
       if (!checkAuth(req, config)) {
-        return send(res, 401, { error: 'authentication required' }, { 'WWW-Authenticate': 'Basic realm="Run:ai Cluster Manager"' });
+        return send(res, 401, { error: 'authentication required' }, { 'WWW-Authenticate': 'Basic realm="Run:ai Multi-Cluster Scheduling Portal"' });
       }
       if (url.pathname === '/readyz') {
         await manager.client.authenticate().catch((e) => { throw new HttpError(503, `not ready: ${e.message}`); });

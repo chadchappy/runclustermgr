@@ -1,11 +1,11 @@
-# Deploying Run:ai Cluster Manager on your own clusters
+# Deploying the Run:ai Multi-Cluster Scheduling Portal on your own clusters
 
-A step-by-step guide for installing the Cluster Manager against **your** Run:ai control plane and clusters. Every value below that looks like `runai.example.com` or `my-app-name` is a placeholder; replace it with yours.
+A step-by-step guide for installing the portal against **your** Run:ai control plane and clusters. Every value below that looks like `runai.example.com` or `my-app-name` is a placeholder; replace it with yours.
 
 ## How it fits together
 
 ```
- Your users ──► Cluster Manager (one small pod, any Kubernetes cluster)
+ Your users ──► Scheduling Portal (one small pod, any Kubernetes cluster)
                       │  HTTPS (Run:ai public API, app credentials)
                       ▼
           Run:ai control plane  ──►  cluster A, cluster B, cluster C …
@@ -62,7 +62,7 @@ There is no shared public image; you build it once and push it where your cluste
 git clone https://github.com/chadchappy/runclustermgr.git
 cd runclustermgr
 docker buildx build --platform linux/amd64 \
-  -t registry.example.com/runclustermgr:2.1.1 --push .
+  -t registry.example.com/runclustermgr:2.2.3 --push .
 ```
 
 Use `--platform linux/amd64,linux/arm64` if your nodes are mixed or Arm. Use a new, immutable tag for every release (never `latest`).
@@ -89,7 +89,7 @@ Edit `environments/prod.env`. The values you must set:
 
 ```bash
 EXPECT_CONTEXT=prod-cluster                 # the kube context you will deploy to (see step 4)
-IMAGE=registry.example.com/runclustermgr:2.1.1
+IMAGE=registry.example.com/runclustermgr:2.2.3
 RUNAI_CONTROL_PLANE=runai.example.com       # host only, no https://
 RUNAI_CLIENT_ID=cluster-manager             # the application name from step 1
 RUNAI_CLIENT_SECRET_FILE=~/.secrets/clustermgr.secret
@@ -175,6 +175,7 @@ RUNAI_CLIENT_SECRET_FILE=~/.secrets/clustermgr.secret node scripts/qa-live.mjs
 - **Schedule automatically** (default) sends the workload to the cluster with the most free GPUs. Turn it off, or click a cluster, to choose one yourself.
 - Pick a **project**. The same project name must exist on a cluster for it to be eligible, unless you enabled `AUTO_CREATE_PROJECTS`.
 - The **placement preview** shows how every cluster ranks and why before you submit.
+- Prefer pasting? The **YAML** tile takes a Kubernetes manifest (what `runai workload submit -f` takes) and the **Run:ai CLI** tile takes a `runai workspace|training|inference submit ...` command. Both are syntax-checked as you type, with the line and column of every problem. See the README section "YAML and CLI input" for what is supported.
 
 ## Network checklist
 
@@ -199,6 +200,7 @@ Make one env file per control plane (`environments/prod.env`, `environments/stag
 | Task | How |
 |---|---|
 | Upgrade | build and push a new tag, change `IMAGE`, rerun `scripts/deploy.sh` |
+| After upgrading the `runai` CLI | on a machine with the new CLI: `node scripts/gen-cli-spec.mjs`, then `npm test`, rebuild and redeploy |
 | After upgrading Run:ai | `curl -s https://<control-plane>/api/docs -o openapi.yaml`, convert to JSON (`yq -o=json . openapi.yaml > openapi.json`), `npm run contract -- openapi.json`, `npm test` |
 | Rotate the Run:ai secret | create a new one in Run:ai, overwrite the secret file, rerun the deploy script |
 | Rotate the UI password | `kubectl -n clustermgr delete secret clustermgr-secrets`, rerun the deploy script (a new password is generated; read it with the command in step 6) |

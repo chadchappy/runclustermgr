@@ -4,23 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>Run:ai Cluster Manager</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2376b900'/%3E%3Cpath d='M8 21l5-10 4 7 3-5 4 8' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <title>Run:ai Multi-Cluster Scheduling Portal</title>
+  <link rel="icon" href="/assets/favicon.ico">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="top">
+    <div class="top-inner">
     <div class="brand">
-      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#76b900"/><path d="M8 21l5-10 4 7 3-5 4 8" fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <picture class="nv">
+        <source media="(prefers-color-scheme: dark)" srcset="/assets/nvidia-on-dark.svg">
+        <img src="/assets/nvidia-on-light.svg" alt="NVIDIA" height="18">
+      </picture>
+      <span class="vr" aria-hidden="true"></span>
       <div>
-        <h1>Cluster Manager</h1>
-        <p id="cp" class="muted">Multi-cluster scheduling for Run:ai</p>
+        <h1>Run:ai Multi-Cluster Scheduling Portal</h1>
+        <p id="cp" class="muted">Schedule workloads on the cluster with the most free GPUs</p>
       </div>
     </div>
     <div class="status">
       <span id="mock" class="chip warn" hidden>Demo data</span>
       <span id="live" class="live" role="status"><i class="dot"></i><span id="liveText">Connecting…</span></span>
       <button id="refresh" class="ghost" type="button" title="Refresh now">Refresh</button>
+    </div>
     </div>
   </header>
 
@@ -44,6 +50,8 @@
           <label><input type="radio" name="type" value="training" checked><span>Training</span></label>
           <label><input type="radio" name="type" value="distributed"><span>Distributed</span></label>
           <label><input type="radio" name="type" value="inference"><span>Inference</span></label>
+          <label><input type="radio" name="type" value="yaml"><span>YAML</span></label>
+          <label><input type="radio" name="type" value="cli"><span>Run:ai CLI</span></label>
         </div>
 
         <div class="field placebox">
@@ -57,7 +65,7 @@
         </div>
 
         <div class="row2">
-          <label class="field">Name
+          <label class="field formonly">Name
             <input name="name" required maxlength="63" spellcheck="false">
           </label>
           <label class="field">Project
@@ -66,11 +74,36 @@
         </div>
         <small class="hint" id="projHint" style="display:block;margin:-6px 0 14px"></small>
 
-        <label class="field">Container image
+        <div class="editorbox editoronly">
+          <div class="ed-head">
+            <label for="edText" id="edTitle">Kubernetes manifest (YAML)</label>
+            <span class="ed-actions">
+              <button type="button" id="edExample" class="ghost sm">Insert example</button>
+              <button type="button" id="edClear" class="ghost sm">Clear</button>
+            </span>
+          </div>
+          <div class="ed">
+            <pre id="gutter" aria-hidden="true"></pre>
+            <textarea id="edText" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-describedby="edStatus"></textarea>
+          </div>
+          <div id="edStatus" class="edstatus muted" role="status" aria-live="polite"></div>
+          <ul id="edErrors" class="errors" hidden></ul>
+          <ul id="edWarnings" class="warns" hidden></ul>
+          <label class="field yamlonly" style="margin-top:12px">GPUs for placement
+            <input id="edGpus" type="number" min="0" step="any" placeholder="detected from the manifest">
+            <small class="hint" id="edGpuHint"></small>
+          </label>
+          <details class="edhelp">
+            <summary id="edHelpTitle">What is checked</summary>
+            <div id="edHelp"></div>
+          </details>
+        </div>
+
+        <label class="field formonly">Container image
           <input name="image" required placeholder="nvcr.io/nvidia/pytorch:24.05-py3" spellcheck="false">
         </label>
 
-        <div class="field">
+        <div class="field formonly">
           <span class="lbl">GPUs <small class="muted">(per pod)</small></span>
           <div class="gpus">
             <div class="chips" id="gpuChips" role="group" aria-label="GPU presets"></div>
@@ -91,7 +124,7 @@
           <input name="port" type="number" min="1" max="65535" value="8000">
         </label>
 
-        <details>
+        <details class="formonly">
           <summary>Advanced</summary>
           <div class="row2">
             <label class="field">CPU cores <input name="cpu" type="number" min="0" step="any" placeholder="default"></label>

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Live end-to-end QA through a DEPLOYED Cluster Manager: submits one small workload of every
-// type, checks Run:ai accepted it and where it was placed, then deletes everything it created.
+// Live end-to-end QA through a DEPLOYED portal: submits one small workload of every
+// type (including a pasted YAML manifest and CLI commands), checks Run:ai accepted it and where it was placed, then deletes everything it created.
 //
 //   BASE_URL=https://clustermgr.example.com UI_USER=admin UI_PASSWORD=... PROJECT=msched-demo \
 //   RUNAI_CONTROL_PLANE=host RUNAI_CLIENT_ID=app RUNAI_CLIENT_SECRET_FILE=~/.secrets/x node scripts/qa-live.mjs
@@ -28,7 +28,21 @@ const runai = new RunaiClient({ baseUrl: `https://${env.RUNAI_CONTROL_PLANE.repl
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const tag = Math.random().toString(36).slice(2, 6);
 const base = { project: PROJECT, image: 'busybox:1.36' };
-const DELETE_PATH = { workspace: 'workspaces', training: 'trainings', distributed: 'distributed', inference: 'inferences' };
+const DELETE_PATH = { workspace: '/api/v1/workloads/workspaces', training: '/api/v1/workloads/trainings', distributed: '/api/v1/workloads/distributed', inference: '/api/v1/workloads/inferences', manifest: '/api/v2/workloads' };
+
+const manifest = (name) => `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${name}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: main
+        image: busybox:1.36
+        command: ["sleep", "300"]
+`;
 
 const cases = [
   { label: 'training, 1 GPU (auto-placed)', req: { ...base, type: 'training', gpus: 1, command: 'sleep', args: '300' } },
@@ -37,6 +51,10 @@ const cases = [
   { label: 'distributed MPI, 1 worker (CPU)', req: { ...base, type: 'distributed', framework: 'MPI', workers: 1, gpus: 0, command: 'sleep', args: '300' } },
   { label: 'inference, CPU, port 8000', req: { ...base, type: 'inference', gpus: 0, port: 8000, image: 'hashicorp/http-echo:1.0', args: '-listen=:8000' } },
   { label: 'training, CPU-only', req: { ...base, type: 'training', gpus: 0, command: 'sleep', args: '300' } },
+  // pasted input: the YAML tile and the Run:ai CLI tile
+  { label: 'YAML tile: Kubernetes Job manifest', yaml: true },
+  { label: 'CLI tile: runai training submit', cli: (name) => `runai training submit ${name} -p ${PROJECT} -i busybox:1.36 --command -- sleep 300` },
+  { label: 'CLI tile: runai workspace submit', cli: (name) => `runai workspace submit ${name} -p ${PROJECT} -i busybox:1.36 --command -- sleep 300` },
 ];
 
 console.log(`Live QA via ${BASE}, project "${PROJECT}"\n`);
@@ -44,10 +62,13 @@ let failed = 0;
 const created = [];
 for (const [i, c] of cases.entries()) {
   const name = `qa-${tag}-${i + 1}`;
-  const r = await app('POST', '/api/workloads', { ...c.req, name });
+  const body = c.yaml ? { source: 'yaml', project: PROJECT, text: manifest(name) }
+    : c.cli ? { source: 'cli', text: c.cli(name) }
+      : { ...c.req, name };
+  const r = await app('POST', '/api/workloads', body);
   if (r.status === 202 && r.body.workload) {
     const w = r.body.workload;
-    created.push({ name, type: c.req.type, id: w.workloadId || w.id, clusterId: w.clusterId });
+    created.push({ name, type: c.yaml ? 'manifest' : c.cli ? (c.cli(name).includes('workspace') ? 'workspace' : 'training') : c.req.type, id: w.workloadId || w.id, clusterId: w.clusterId });
     console.log(`  ok    ${c.label.padEnd(40)} -> ${r.body.placement.chosenName}${r.body.placement.queued ? ' (queued)' : ''}`);
   } else {
     failed++;
@@ -70,7 +91,7 @@ if (created.length) {
 
 console.log('\nCleaning up...');
 for (const w of created) {
-  try { await runai.request('DELETE', `/api/v1/workloads/${DELETE_PATH[w.type]}/${w.id}`); console.log(`  deleted ${w.name}`); }
+  try { await runai.request('DELETE', `${DELETE_PATH[w.type]}/${w.id}`); console.log(`  deleted ${w.name}`); }
   catch (e) { failed++; console.log(`  FAIL deleting ${w.name}: ${e.message}`); }
 }
 

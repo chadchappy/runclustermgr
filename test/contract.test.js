@@ -5,7 +5,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPayload, FRAMEWORKS, TYPES } from '../server/payloads.js';
+import { buildPayload, FRAMEWORKS, TYPES as ALL_TYPES } from '../server/payloads.js';
+
+const TYPES = ALL_TYPES.filter((t) => t !== 'manifest'); // form workloads; manifests have their own contract below
 
 const contract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).endpoints;
 const ctx = { projectId: 'p1', clusterId: 'c1' };
@@ -58,4 +60,25 @@ test('regression: the legacy v1 app sent compute.cpu / compute.memory, which the
     assert.ok(contract[type].computeKeys.includes('cpuCoreRequest'));
     assert.ok(contract[type].computeKeys.includes('cpuMemoryRequest'));
   }
+});
+
+test('manifest submission uses only fields defined by POST /api/v2/workloads', () => {
+  const m = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).manifestCreate;
+  for (const name of ['my-job', null]) {
+    const { path, body } = buildPayload({ type: 'manifest', name, project: 'p', manifestText: 'apiVersion: v1\nkind: Pod\nmetadata:\n  name: x\n', gpus: 1 }, ctx);
+    assert.equal(path, m.path);
+    for (const k of Object.keys(body)) assert.ok(m.topKeys.includes(k), `unknown top-level field ${k}`);
+    for (const k of m.topRequired) assert.notEqual(body[k], undefined, `missing ${k}`);
+    for (const k of Object.keys(body.metadata)) assert.ok(m.metadataKeys.includes(k), `unknown metadata field ${k}`);
+    assert.equal(body.manifest, undefined, 'manifest and manifestBase64Encoded are mutually exclusive');
+    assert.equal(body.metadata.clusterId, undefined, 'projectId and clusterId are mutually exclusive on /api/v2/workloads (live API: HTTP 400)');
+    assert.equal(body.metadata.projectId, 'p1');
+    assert.match(Buffer.from(body.manifestBase64Encoded, 'base64').toString(), /kind: Pod/);
+  }
+});
+
+test('name-prefix workloads use the API field useGivenNameAsPrefix', () => {
+  const { body } = buildPayload({ type: 'training', name: 'run', namePrefix: true, project: 'p', image: 'i', gpus: 0 }, ctx);
+  assert.equal(body.useGivenNameAsPrefix, true);
+  assert.ok(contract.training.topKeys.includes('useGivenNameAsPrefix'));
 });

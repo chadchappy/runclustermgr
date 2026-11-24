@@ -108,7 +108,8 @@ export class RunaiClient {
           await sleep(this.retryDelayMs * 2 ** (attempt - 1));
           continue;
         }
-        const msg = (data && typeof data === 'object' && (data.message || data.error)) || `HTTP ${res.status}`;
+        const first = Array.isArray(data) ? data[0] : data;
+        const msg = (first && typeof first === 'object' && (first.message || first.error)) || `HTTP ${res.status}`;
         throw new RunaiError(`Run:ai ${method} ${path} failed: ${msg}`, { status: res.status, body: data, retryable });
       } catch (e) {
         if (e instanceof RunaiError) throw e;

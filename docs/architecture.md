@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-Browser ──► Cluster Manager (Node, single process)
+Browser ──► Scheduling Portal (Node, single process)
               ├─ web/        static UI (no dependencies)
               ├─ server/
               │   ├─ runai-client.js   token + retry + pagination
@@ -45,6 +45,22 @@ Input: a request (project, total GPU demand) and the capacity snapshot. Demand i
 ### Reservations
 
 Run:ai telemetry lags a submission by seconds. After each submission the manager reserves the requested GPUs on the chosen cluster for 90 s (configurable) and subtracts them from free capacity. A failed submission releases its reservation. This is why four rapid 4-GPU submissions across two 8-free clusters split two and two instead of all landing on one.
+
+## Pasted input: YAML manifests and CLI commands
+
+`server/intake.js` turns pasted text into a workload request, so the rest of the pipeline (placement, reservations, fallback, on-demand projects) is identical for the form, YAML and CLI.
+
+| | YAML tile | CLI tile |
+|---|---|---|
+| Input | one Kubernetes manifest | one `runai ... submit ...` command |
+| Parser | js-yaml (vendored), with line/column from the parser | shell-style tokenizer that never expands or executes anything |
+| Model | Kubernetes object shape (apiVersion, kind, metadata.name) | `contract/runai-cli.json`, generated from `runai --help` by `scripts/gen-cli-spec.mjs` |
+| Submitted as | `POST /api/v2/workloads` with `{ metadata: { name?, projectId }, manifestBase64Encoded }` | the same v1 endpoints as the form |
+| GPU need | `nvidia.com/gpu` limits/requests x replicas/parallelism (overridable) | `-g` / `--gpu-portion-request` (x workers for distributed) |
+
+`POST /api/validate` runs the same parser without side effects and returns `{ ok, errors:[{line,column,message}], warnings, summary }`; `/api/placement` and `/api/workloads` accept `{ source, text, project }` and fail with `400` and `Line N:C ...` details when the input is invalid, before anything is sent to Run:ai.
+
+Design rules: a flag or field that cannot be honoured is an error (never silently dropped); `projectId` alone selects the cluster for manifests (`projectId` and `clusterId` are mutually exclusive on that endpoint, and the project belongs to one cluster); manifest and CLI text are never logged or echoed back.
 
 ## Choosing a cluster
 
