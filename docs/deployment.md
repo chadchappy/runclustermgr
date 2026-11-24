@@ -46,6 +46,7 @@ cp environments/example.env environments/<name>.env
 | `NO_FIT_STRATEGY` | no | `queue` (default) or `reject` |
 | `EXCLUDE_CLUSTERS` | no | Comma list of cluster names/UUIDs never to place on |
 | `ALLOW_UNKNOWN_CAPACITY` | no | Treat clusters with unknown GPU availability as available (default `false`) |
+| `AUTO_CREATE_PROJECTS` | no | `true` = create a matching project on a cluster that lacks the chosen one, so any project works on any cluster. Needs project-create rights in Run:ai (default `false`) |
 | `MOCK` | no | `1` = built-in demo data, no Run:ai calls |
 
 \* not needed with `MOCK=1`.

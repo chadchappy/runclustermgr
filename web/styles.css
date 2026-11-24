@@ -120,3 +120,14 @@ th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: upp
 tr:last-child td { border-bottom: 0; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.seg.dyn { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-bottom: 0; }
+.seg.dyn button { border: 0; background: transparent; color: var(--muted); border-radius: 7px; padding: 7px 8px; font-size: 13.5px; }
+.seg.dyn button[aria-checked="true"] { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.seg.dyn button:disabled { opacity: .4; cursor: not-allowed; }
+.card.pick { cursor: pointer; }
+.card.pick:hover { border-color: var(--muted); }
+.card.sel { border-color: var(--info); box-shadow: 0 0 0 1px var(--info), var(--shadow); }
+.card.rec.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
+.pill.sel { background: var(--info); color: #fff; }
+.pill.best { background: var(--accent-soft); color: var(--text); border: 1px solid var(--accent); }

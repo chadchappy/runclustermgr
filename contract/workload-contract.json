@@ -349,5 +349,44 @@
         ]
       }
     }
+  },
+  "projectCreate": {
+    "path": "/api/v1/org-unit/projects",
+    "topKeys": [
+      "clusterId",
+      "defaultNodePools",
+      "description",
+      "enforceRunaiScheduler",
+      "name",
+      "nodeTypes",
+      "parentId",
+      "requestedNamespace",
+      "resources",
+      "schedulingRules"
+    ],
+    "topRequired": [
+      "clusterId",
+      "name",
+      "resources"
+    ],
+    "resourceKeys": [
+      "cpu",
+      "gpu",
+      "memory",
+      "nodePool",
+      "rank"
+    ],
+    "gpuKeys": [
+      "deserved",
+      "limit",
+      "overQuotaWeight"
+    ],
+    "nodePoolKeys": [
+      "id",
+      "name"
+    ],
+    "nodePoolRequired": [
+      "id"
+    ]
   }
 }

@@ -46,6 +46,12 @@
           <label><input type="radio" name="type" value="inference"><span>Inference</span></label>
         </div>
 
+        <div class="field">
+          <span class="lbl">Place on</span>
+          <div class="seg dyn" id="placeOn" role="radiogroup" aria-label="Cluster to run on"></div>
+          <small class="hint" id="placeHint"></small>
+        </div>
+
         <div class="row2">
           <label class="field">Name
             <input name="name" required maxlength="63" spellcheck="false">
@@ -54,6 +60,7 @@
             <select name="project" required></select>
           </label>
         </div>
+        <small class="hint" id="projHint" style="display:block;margin:-6px 0 14px"></small>
 
         <label class="field">Container image
           <input name="image" required placeholder="nvcr.io/nvidia/pytorch:24.05-py3" spellcheck="false">
@@ -92,9 +99,6 @@
           </div>
           <label class="field">Environment variables <small class="muted">(one KEY=value per line)</small>
             <textarea name="env" rows="3" spellcheck="false"></textarea>
-          </label>
-          <label class="field">Cluster
-            <select name="pin"><option value="">Automatic — most available GPUs (recommended)</option></select>
           </label>
         </details>
 

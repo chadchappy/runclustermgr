@@ -3,7 +3,7 @@
 
 const $ = (s, el = document) => el.querySelector(s);
 const form = $('#form');
-const state = { config: null, clusters: [], projects: [], preview: null, lastUpdate: 0, loadError: null, submitting: false };
+const state = { config: null, clusters: [], projects: [], preview: null, pinned: '', lastUpdate: 0, loadError: null, submitting: false };
 
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -25,24 +25,63 @@ async function api(method, path, body) {
 }
 
 const fmt = (n) => (n === null || n === undefined ? '—' : Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
-const ago = (ms) => { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 5 ? 'just now' : s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`; };
+const ago = (ms) => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+};
+
+// ---------- cluster selection ----------
+// state.pinned === '' means "Automatic": the most open cluster wins. Otherwise the user's choice.
+function setPinned(id) {
+  state.pinned = state.pinned === id ? '' : id; // clicking the selected cluster again returns to automatic
+  renderPlaceOn();
+  renderClusters();
+  schedulePreview();
+}
+
+function renderPlaceOn() {
+  const root = $('#placeOn');
+  const mk = (id, label, disabled) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(state.pinned === id), disabled, 'data-id': id }, label);
+  root.replaceChildren(
+    mk('', 'Automatic', false),
+    ...state.clusters.map((c) => mk(c.id, c.name, !c.connected)));
+  const best = state.preview?.ranked?.find((r) => r.clusterId === state.preview.chosen);
+  $('#placeHint').textContent = state.pinned
+    ? 'You chose the cluster. Select Automatic to use the one with the most free GPUs.'
+    : best ? `Automatic picks the cluster with the most free GPUs (currently ${best.name}).` : 'Automatic picks the cluster with the most free GPUs.';
+}
 
 // ---------- clusters ----------
 function renderClusters() {
   const root = $('#clusters');
   root.replaceChildren();
   const rankById = new Map((state.preview?.ranked || []).map((r, i) => [r.clusterId, { ...r, i }]));
-  const chosen = state.preview?.chosen;
-  for (const c of state.clusters) {
+  const best = state.preview?.chosen; // the most open cluster (ignores the manual choice)
+  // connected clusters first, then most free GPUs, then name
+  const ordered = [...state.clusters].sort((a, b) => (b.connected - a.connected) || ((b.gpu.free ?? -1) - (a.gpu.free ?? -1)) || a.name.localeCompare(b.name));
+  for (const c of ordered) {
     const total = c.gpu.total, free = c.gpu.free;
     const used = total && free !== null ? Math.max(0, total - free) : null;
     const rank = rankById.get(c.id);
-    const dim = rank && !rank.eligible;
-    const card = h('article', { class: `card${chosen === c.id ? ' rec' : ''}${dim ? ' dim' : ''}` },
+    const isPinned = state.pinned === c.id;
+    const target = state.pinned ? isPinned : best === c.id;
+    const dim = rank && !rank.eligible && !isPinned;
+    const card = h('article', {
+      class: `card${c.connected ? ' pick' : ''}${isPinned ? ' sel' : ''}${!state.pinned && best === c.id ? ' rec' : ''}${dim ? ' dim' : ''}`,
+      tabindex: c.connected ? '0' : null,
+      role: c.connected ? 'button' : null,
+      'aria-pressed': c.connected ? String(isPinned) : null,
+      title: c.connected ? (isPinned ? 'Click to go back to automatic placement' : `Click to place workloads on ${c.name}`) : null,
+    },
       h('div', { class: 'card-head' },
         h('h3', {}, c.name),
         h('span', {},
-          chosen === c.id ? h('span', { class: 'pill rec' }, state.preview.queued ? 'Queue here' : 'Recommended') : null,
+          isPinned ? h('span', { class: 'pill sel' }, 'Your choice') : null,
+          !isPinned && best === c.id ? h('span', { class: state.pinned ? 'pill best' : 'pill rec' }, state.pinned ? 'Most open' : (state.preview?.queued ? 'Queue here' : 'Recommended')) : null,
           ' ',
           h('span', { class: `pill ${c.connected ? 'ok' : 'bad'}` }, c.connected ? 'Connected' : c.state))),
       c.connected
@@ -56,19 +95,33 @@ function renderClusters() {
         h('span', {}, h('b', {}, fmt(c.pending)), ' pending'),
         c.reserved ? h('span', {}, h('b', {}, fmt(c.reserved)), ' reserved') : null,
         c.version ? h('span', {}, 'v', c.version) : null),
-      rank ? h('div', { class: 'why' }, (rank.eligible ? rank.reasons : rank.rejections).slice(0, 2).join(' · ')) : null);
+      rank && (target || !rank.eligible) ? h('div', { class: 'why' }, (rank.eligible ? rank.reasons : rank.rejections).slice(0, 3).join(' · ')) : null);
+    if (c.connected) {
+      card.addEventListener('click', () => setPinned(c.id));
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPinned(c.id); } });
+    }
     root.append(card);
   }
   const conn = state.clusters.filter((c) => c.connected);
   const free = conn.reduce((a, c) => a + (c.gpu.free || 0), 0);
   const total = conn.reduce((a, c) => a + (c.gpu.total || 0), 0);
   $('#summary').textContent = state.clusters.length ? `${conn.length} of ${state.clusters.length} clusters connected · ${fmt(free)} of ${fmt(total)} GPUs free` : '';
-  // pin selector
-  const pin = form.elements.pin;
-  const cur = pin.value;
-  pin.replaceChildren(h('option', { value: '' }, 'Automatic — most available GPUs (recommended)'),
-    ...state.clusters.map((c) => h('option', { value: c.id, disabled: !c.connected }, `${c.name}${c.connected ? '' : ' (not connected)'}`)));
-  pin.value = state.clusters.some((c) => c.id === cur) ? cur : '';
+}
+
+// ---------- projects ----------
+function renderProjects() {
+  const sel = form.elements.project;
+  const cur = sel.value;
+  sel.replaceChildren(...state.projects.map((p) => h('option', { value: p.name }, p.name)));
+  if (state.projects.some((p) => p.name === cur)) sel.value = cur;
+  updateProjectHint();
+}
+
+function updateProjectHint() {
+  const p = state.projects.find((x) => x.name === form.elements.project.value);
+  const hint = $('#projHint');
+  if (!p) { hint.textContent = ''; return; }
+  hint.textContent = `Exists on ${p.clusters.join(', ') || 'no cluster'}.` + (p.missingOn?.length ? ` Created automatically on ${p.missingOn.join(', ')} if the workload runs there.` : '');
 }
 
 // ---------- form ----------
@@ -99,7 +152,7 @@ function readRequest({ forPreview = false } = {}) {
   opt('memory', f.memory.value.trim());
   opt('command', f.command.value.trim());
   opt('args', f.args.value.trim());
-  opt('pinnedClusterId', f.pin.value);
+  if (!forPreview) opt('pinnedClusterId', state.pinned); // the preview always ranks every cluster
   if (type === 'distributed') { req.framework = f.framework.value; req.workers = Number(f.workers.value); }
   if (type === 'inference') opt('port', f.port.value === '' ? '' : Number(f.port.value));
   const env = parseEnv(f.env.value);
@@ -113,6 +166,7 @@ function schedulePreview() {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(runPreview, 250);
 }
+
 async function runPreview() {
   const seq = ++previewSeq;
   const msg = $('#placeMsg');
@@ -123,18 +177,28 @@ async function runPreview() {
     const p = await api('POST', '/api/placement', req);
     if (seq !== previewSeq) return;
     state.preview = p;
-    msg.textContent = p.message;
-    msg.className = `place-msg ${p.chosen ? 'good' : 'muted'}`;
-    const list = $('#ranking');
-    list.replaceChildren(...p.ranked.map((r, i) => h('li', { class: `${r.clusterId === p.chosen ? 'first' : ''}${r.eligible ? '' : ' no'}` },
-      h('div', { class: 't' }, h('span', {}, r.name),
+    const pinned = state.pinned ? p.ranked.find((r) => r.clusterId === state.pinned) : null;
+    const best = p.ranked.find((r) => r.clusterId === p.chosen);
+    let text; let good = true;
+    if (pinned) {
+      if (pinned.eligible) {
+        text = `Placing on ${pinned.name} (your choice)${pinned.createsProject ? ` — project "${req.project}" will be created there` : ''}.`;
+        if (best && best.clusterId !== pinned.clusterId) text += ` Most open right now: ${best.name} (${fmt(best.free)} free).`;
+      } else { text = `${pinned.name} cannot be used: ${pinned.rejections.join('; ')}`; good = false; }
+    } else { text = p.message; good = !!p.chosen; }
+    msg.textContent = text;
+    msg.className = `place-msg ${good ? 'good' : 'muted'}`;
+    const marked = state.pinned || p.chosen;
+    $('#ranking').replaceChildren(...p.ranked.map((r) => h('li', { class: `${r.clusterId === marked && r.eligible ? 'first' : ''}${r.eligible ? '' : ' no'}` },
+      h('div', { class: 't' }, h('span', {}, r.name, r.clusterId === state.pinned ? h('small', { class: 'muted' }, ' · your choice') : null),
         r.eligible ? h('span', { class: `pill ${r.fitsNow ? 'ok' : 'warn'}` }, r.fitsNow ? `${fmt(r.free)} free` : 'wait for capacity') : h('span', { class: 'pill bad' }, 'Not eligible')),
       h('div', { class: 'r' }, (r.eligible ? (r.reasons.length ? r.reasons : ['eligible']) : r.rejections).join(' · ')))));
+    renderPlaceOn();
     renderClusters();
   } catch (e) {
     if (seq !== previewSeq) return;
     state.preview = null;
-    msg.textContent = e.details?.length ? e.details.join(' · ') : e.message;
+    msg.textContent = e.details?.length && typeof e.details[0] === 'string' ? e.details.join(' · ') : e.message;
     msg.className = 'place-msg muted';
     $('#ranking').replaceChildren();
     renderClusters();
@@ -173,15 +237,18 @@ async function onSubmit(ev) {
   try {
     const out = await api('POST', '/api/workloads', req);
     const p = out.placement;
+    const chosen = p.ranked?.find((r) => r.clusterId === p.chosen);
     const link = state.config?.controlPlane && !state.config.mock ? h('a', { href: `https://${state.config.controlPlane}/workloads`, target: '_blank', rel: 'noopener' }, 'Open in Run:ai') : null;
     result.className = 'result';
     result.replaceChildren(
-      h('div', {}, h('b', {}, `Submitted to ${p.chosenName}`), p.queued ? ' — waiting for GPUs (queued)' : ''),
-      h('div', { class: 'muted' }, `${req.name} · ${out.workload?.workloadId || ''}`, p.attempts?.length ? ` · fell back from ${p.attempts.map((a) => a.clusterName).join(', ')}` : ''),
+      h('div', {}, h('b', {}, `Submitted to ${p.chosenName}`), state.pinned ? ' (your choice)' : ' (most open)', p.queued ? ' — waiting for GPUs (queued)' : ''),
+      h('div', { class: 'muted' }, `${req.name} · ${out.workload?.workloadId || ''}`,
+        chosen?.createsProject ? ` · created project "${req.project}" on ${p.chosenName}` : '',
+        p.attempts?.length ? ` · fell back from ${p.attempts.map((a) => a.clusterName).join(', ')}` : ''),
       link ? h('div', {}, link) : null);
     result.hidden = false;
     form.elements.name.value = newName();
-    await refresh({ force: true });
+    await Promise.all([refresh({ force: true }), loadProjects()]);
     runPreview();
   } catch (e) {
     const list = e.details && Array.isArray(e.details) && typeof e.details[0] === 'string' ? e.details : null;
@@ -216,14 +283,23 @@ function setLive(ok, text) {
   $('#liveText').textContent = text;
 }
 
+async function loadProjects() {
+  try {
+    state.projects = await api('GET', '/api/projects');
+    renderProjects();
+  } catch { if (!state.projects.length) form.elements.project.replaceChildren(h('option', { value: '' }, 'Projects unavailable')); }
+}
+
 async function refresh({ force = false } = {}) {
   try {
     const [c, w] = await Promise.all([api('GET', `/api/clusters${force ? '?refresh=1' : ''}`), api('GET', '/api/workloads').catch(() => null)]);
     state.clusters = c.clusters;
+    if (state.pinned && !state.clusters.some((x) => x.id === state.pinned && x.connected)) state.pinned = ''; // chosen cluster went away
     state.lastUpdate = Date.now();
     state.loadError = null;
     $('#alert').hidden = c.errors?.length ? false : true;
     if (c.errors?.length) $('#alert').textContent = `Some Run:ai data is unavailable (shown as —): ${c.errors.join('; ')}`;
+    renderPlaceOn();
     renderClusters();
     if (w) renderWorkloads(w);
     setLive(true, `Updated ${ago(state.lastUpdate)}`);
@@ -241,6 +317,12 @@ async function init() {
     chips.append(h('button', { type: 'button', 'data-v': v, 'aria-pressed': 'false' }, v === 0 ? 'None' : String(v)));
   }
   chips.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setGpu(Number(b.dataset.v)); });
+  $('#placeOn').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    state.pinned = b.dataset.id;
+    renderPlaceOn(); renderClusters(); schedulePreview();
+  });
   form.elements.name.value = newName();
   syncGpuUi(); syncType();
 
@@ -251,18 +333,15 @@ async function init() {
     $('#ver').textContent = `v${state.config.version}`;
   } catch { /* shown by refresh */ }
 
-  try {
-    state.projects = await api('GET', '/api/projects');
-    form.elements.project.replaceChildren(...state.projects.map((p) => h('option', { value: p.name }, `${p.name} · ${p.clusters.length} cluster${p.clusters.length === 1 ? '' : 's'}`)));
-  } catch { form.elements.project.replaceChildren(h('option', { value: '' }, 'Projects unavailable')); }
-
+  await loadProjects();
   form.addEventListener('submit', onSubmit);
   form.addEventListener('input', (e) => {
     if (e.target.name === 'gpus') syncGpuUi();
     if (e.target.name === 'type') syncType();
+    if (e.target.name === 'project') updateProjectHint();
     schedulePreview();
   });
-  $('#refresh').addEventListener('click', () => refresh({ force: true }));
+  $('#refresh').addEventListener('click', () => { refresh({ force: true }); loadProjects(); });
 
   await refresh();
   runPreview();

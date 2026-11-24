@@ -1,6 +1,6 @@
 import { collectSnapshot } from './capacity.js';
 import { rankClusters, Reservations } from './placement.js';
-import { buildPayload, gpuDemand, validateRequest } from './payloads.js';
+import { buildPayload, buildProjectPayload, gpuDemand, validateRequest } from './payloads.js';
 import { RunaiError } from './runai-client.js';
 
 export class HttpError extends Error {
@@ -53,7 +53,14 @@ export class ClusterManager {
     for (const c of snap.clusters) {
       for (const name of Object.keys(c.projects || {})) (byName[name] ||= []).push(c.name);
     }
-    return Object.entries(byName).map(([name, clusters]) => ({ name, clusters: clusters.sort() })).sort((a, b) => a.name.localeCompare(b.name));
+    return Object.entries(byName)
+      .map(([name, clusters]) => ({
+        name,
+        clusters: clusters.sort(),
+        // clusters where the project would be created on demand
+        missingOn: this.config.policy.autoCreateProjects ? snap.clusters.filter((c) => c.connected && !(c.projects || {})[name]).map((c) => c.name).sort() : [],
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   _rank(snap, request) {
@@ -91,8 +98,11 @@ export class ClusterManager {
     for (let i = 0; i < maxAttempts; i++) {
       const clusterId = candidates[i];
       const cluster = snap.clusters.find((c) => c.id === clusterId);
-      const project = cluster.projects?.[request.project];
-      if (!project) throw new HttpError(409, `Project "${request.project}" not found on ${cluster.name}`);
+      let project = cluster.projects?.[request.project];
+      if (!project) {
+        if (!this.config.policy.autoCreateProjects) throw new HttpError(409, `Project "${request.project}" not found on ${cluster.name}`);
+        project = await this._createProject(cluster, request.project);
+      }
       const { path, body } = buildPayload(request, { projectId: project.id, clusterId });
 
       this.reservations.add(clusterId, demand);
@@ -126,6 +136,50 @@ export class ClusterManager {
       }
     }
     throw new HttpError(502, 'Submission failed', { attempts });
+  }
+
+  // Create `name` on `cluster` (opt-in via AUTO_CREATE_PROJECTS). Returns { id, name }.
+  async _createProject(cluster, name) {
+    const pools = await this.client.list('/api/v1/node-pools', 'nodepools');
+    const mine = pools.filter((p) => p.clusterId === cluster.id);
+    const pool = mine.find((p) => p.isDefault) || mine[0];
+    if (!pool) throw new HttpError(502, `Cannot create project "${name}" on ${cluster.name}: the cluster reports no node pool`);
+
+    let created;
+    try {
+      try {
+        created = await this.client.post('/api/v1/org-unit/projects', buildProjectPayload({ name, clusterId: cluster.id, nodePoolId: pool.id, nodePoolName: pool.name }));
+      } catch (e) {
+        // Clusters with the over-quota feature off reject the weight; retry without it.
+        if (e instanceof RunaiError && e.status === 400 && /over ?quota/i.test(e.message)) {
+          created = await this.client.post('/api/v1/org-unit/projects', buildProjectPayload({ name, clusterId: cluster.id, nodePoolId: pool.id, nodePoolName: pool.name, overQuota: false }));
+        } else throw e;
+      }
+    } catch (e) {
+      if (e instanceof RunaiError && e.status === 409) {
+        // created concurrently (or we raced a stale cache): look it up
+        const found = (await this.client.list('/api/v1/org-unit/projects', 'projects')).find((p) => p.clusterId === cluster.id && p.name === name);
+        if (found) { this.cache = null; return { id: found.id, name }; }
+      }
+      const status = e instanceof RunaiError && e.status >= 400 && e.status < 500 ? e.status : 502;
+      throw new HttpError(status, `Could not create project "${name}" on ${cluster.name}: ${e.message}`);
+    }
+    this.cache = null;
+    this.log({ event: 'project_created', cluster: cluster.name, project: name, id: created?.id });
+    await this._waitProjectReady(cluster.id, name);
+    return { id: created.id, name };
+  }
+
+  // The project controller needs a moment to create the namespace. Best effort, bounded.
+  async _waitProjectReady(clusterId, name, { tries = 15, delayMs = 1500 } = {}) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        const p = (await this.client.list('/api/v1/org-unit/projects', 'projects')).find((x) => x.clusterId === clusterId && x.name === name);
+        if (p?.status?.phase === 'Ready') return true;
+      } catch { /* keep trying */ }
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return false;
   }
 
   _record(rec) {

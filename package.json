@@ -1,6 +1,6 @@
 {
   "name": "runai-cluster-manager",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "Multi-cluster placement and submission for NVIDIA Run:ai: send each workload to the cluster with the most available GPUs.",
   "private": true,
   "type": "module",

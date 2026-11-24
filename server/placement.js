@@ -31,9 +31,13 @@ export function rankClusters(snapshots, request, policy = {}, reservations = {})
     if (exclude.has(c.id) || exclude.has(c.name)) rejections.push('excluded by policy');
     if (!c.connected) rejections.push(`cluster is not connected (state: ${c.state})`);
     let project = null;
+    let createsProject = false;
     if (c.projects) {
       project = c.projects[request.project] || null;
-      if (!project) rejections.push(`project "${request.project}" does not exist on this cluster`);
+      if (!project) {
+        if (policy.autoCreateProjects) createsProject = true;
+        else rejections.push(`project "${request.project}" does not exist on this cluster`);
+      }
     }
     if (project && project.limit !== null && project.limit !== undefined && need > project.limit) {
       rejections.push(`request of ${need} GPU exceeds project GPU limit of ${project.limit}`);
@@ -54,13 +58,14 @@ export function rankClusters(snapshots, request, policy = {}, reservations = {})
     if (eligible && fitsNow && need > 0) {
       reasons.unshift(`${fmt(free)} of ${total ?? '?'} GPU free${reserved ? ` (${fmt(reserved)} reserved for in-flight submissions)` : ''}`);
       if (project && project.deserved >= need) reasons.push(`within project's guaranteed quota (${project.deserved})`);
+      if (createsProject) reasons.push(`project "${request.project}" will be created on this cluster`);
       if (c.pending === 0) reasons.push('no pending workloads');
       else if (c.pending > 0) reasons.push(`${c.pending} workload(s) pending`);
     }
     const allocRatio = total ? (num(c.gpu?.allocated) ?? (free === null ? 1 : total - free)) / total : 1;
     const score = eligible && total ? Math.max(0, Math.min(100, Math.round(((free ?? 0) - need) / total * 100))) : 0;
 
-    return { clusterId: c.id, name: c.name, eligible, fitsNow, free, reserved, total, pending: c.pending ?? null, allocRatio, score, reasons, rejections };
+    return { clusterId: c.id, name: c.name, eligible, fitsNow, createsProject, free, reserved, total, pending: c.pending ?? null, allocRatio, score, reasons, rejections };
   });
 
   const byFit = (a, b) =>
@@ -84,7 +89,7 @@ export function rankClusters(snapshots, request, policy = {}, reservations = {})
   let message;
   if (fitting.length) {
     chosen = fitting[0];
-    message = `Placing on ${chosen.name}: ${chosen.reasons[0] || 'available'}`;
+    message = `Placing on ${chosen.name}: ${chosen.reasons[0] || 'available'}${chosen.createsProject ? ` (project "${request.project}" will be created there)` : ''}`;
   } else if (nonFitting.length && (policy.noFitStrategy || 'queue') === 'queue') {
     chosen = nonFitting[0];
     queued = true;

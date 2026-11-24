@@ -47,13 +47,13 @@ function send(res, status, body, headers = {}) {
   res.end(isStr ? body : JSON.stringify(body));
 }
 
-export function createApp({ manager, config, version = '2.0.3', log = () => {} }) {
+export function createApp({ manager, config, version = '2.1.0', log = () => {} }) {
   async function api(req, res, url) {
     const { pathname } = url;
     if (req.method === 'GET' && pathname === '/api/config') {
       return send(res, 200, {
         version, mock: config.mock, controlPlane: config.controlPlane || null,
-        policy: { noFitStrategy: config.policy.noFitStrategy, excludeClusters: config.policy.excludeClusters },
+        policy: { noFitStrategy: config.policy.noFitStrategy, excludeClusters: config.policy.excludeClusters, autoCreateProjects: !!config.policy.autoCreateProjects },
       });
     }
     if (req.method === 'GET' && pathname === '/api/clusters') {

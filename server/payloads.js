@@ -103,3 +103,17 @@ export function buildPayload(r, { projectId, clusterId }) {
   }
   return { path: ENDPOINTS[r.type], body };
 }
+
+// A project to create on a cluster that does not have the requested one. It carries no guaranteed
+// GPU quota (deserved: 0): workloads run on over-quota capacity. Clusters with the over-quota
+// feature turned off reject the weight, so callers retry with `overQuota: false`.
+export function buildProjectPayload({ name, clusterId, nodePoolId, nodePoolName, overQuota = true }) {
+  if (!NAME_RE.test(name) || name.length > 63) throw new Error(`cannot create a project named "${name}"`);
+  const gpu = { deserved: 0, ...(overQuota ? { overQuotaWeight: 1 } : {}) };
+  return {
+    name,
+    clusterId,
+    description: 'Created on demand by Run:ai Cluster Manager',
+    resources: [{ nodePool: { id: String(nodePoolId), ...(nodePoolName ? { name: nodePoolName } : {}) }, gpu }],
+  };
+}

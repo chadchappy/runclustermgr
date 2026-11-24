@@ -55,5 +55,19 @@ for (const [type, path] of [
   endpoints[type] = e;
 }
 
-writeFileSync(out, JSON.stringify({ generatedFrom: `${s.info.title} ${s.info.version}`, endpoints }, null, 2) + '\n');
+// Project creation (used for on-demand projects on clusters that lack one)
+const proj = flat(s.paths['/api/v1/org-unit/projects'].post.requestBody.content['application/json'].schema);
+const resArr = proj.properties.resources.$ref ? get(proj.properties.resources) : proj.properties.resources;
+const resItem = flat(resArr.items);
+const projectCreate = {
+  path: '/api/v1/org-unit/projects',
+  topKeys: Object.keys(proj.properties).sort(),
+  topRequired: proj.required.sort(),
+  resourceKeys: Object.keys(resItem.properties).sort(),
+  gpuKeys: Object.keys(flat(resItem.properties.gpu).properties).sort(),
+  nodePoolKeys: Object.keys(flat(resItem.properties.nodePool).properties).sort(),
+  nodePoolRequired: flat(resItem.properties.nodePool).required.sort(),
+};
+
+writeFileSync(out, JSON.stringify({ generatedFrom: `${s.info.title} ${s.info.version}`, endpoints, projectCreate }, null, 2) + '\n');
 console.log(`wrote ${out}`);

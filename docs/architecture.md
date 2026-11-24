@@ -27,6 +27,7 @@ The manager is stateless apart from a 15 s capacity cache, a list of recent deci
 | Pending / running counts | `GET /api/v1/workloads?filterBy=phase==Pending` (and `Running`) |
 | Recent workloads | `GET /api/v1/workloads` |
 | Submit | `POST /api/v1/workloads/{workspaces,trainings,distributed,inferences}` |
+| On-demand project (opt-in) | `GET /api/v1/node-pools`, `POST /api/v1/org-unit/projects` (deserved GPU 0, over-quota weight 1; retried without the weight on clusters with over-quota off) |
 | Auth | `POST /api/v1/token` with `grantType: client_credentials` |
 
 Any value the API does not return is `null` ("unknown") and the UI shows `—`. Placement treats unknown capacity as "cannot verify" and will not call it a fit.
@@ -44,6 +45,14 @@ Input: a request (project, total GPU demand) and the capacity snapshot. Demand i
 ### Reservations
 
 Run:ai telemetry lags a submission by seconds. After each submission the manager reserves the requested GPUs on the chosen cluster for 90 s (configurable) and subtracts them from free capacity. A failed submission releases its reservation. This is why four rapid 4-GPU submissions across two 8-free clusters split two and two instead of all landing on one.
+
+## Choosing a cluster
+
+Automatic placement uses the ranking above. A manual choice (`pinnedClusterId`) restricts the candidates to that one cluster: it is used when eligible, even if it has to queue, and the response says why when it is not. The UI always ranks every cluster so you can compare before overriding.
+
+### Projects across clusters
+
+Run:ai projects belong to one cluster. With `AUTO_CREATE_PROJECTS=true` a cluster that lacks the requested project is still eligible (flagged `createsProject`); on submit the service creates it (`deserved` GPU 0 on the cluster's default node pool, so workloads run on over-quota capacity), waits up to ~20 s for `status.phase == Ready`, then submits. A project created concurrently by someone else (HTTP 409) is picked up instead of failing. Dry-run placement never creates anything. Identity-based project visibility is intentionally not implemented yet.
 
 ## Failure semantics
 

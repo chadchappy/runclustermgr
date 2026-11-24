@@ -37,6 +37,9 @@ export function loadConfig(env = process.env) {
     policy: {
       excludeClusters: list(env.EXCLUDE_CLUSTERS), // names or uuids
       allowUnknownCapacity: env.ALLOW_UNKNOWN_CAPACITY === 'true',
+      // Let a workload run on a cluster that lacks the chosen project by creating a matching
+      // project there on demand. Changes Run:ai org structure, so it is opt-in.
+      autoCreateProjects: env.AUTO_CREATE_PROJECTS === 'true',
       // When nothing fits right now: 'queue' places on the best cluster anyway
       // (Run:ai queues it); 'reject' returns an error.
       noFitStrategy: env.NO_FIT_STRATEGY === 'reject' ? 'reject' : 'queue',

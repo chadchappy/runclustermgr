@@ -9,13 +9,15 @@ Multi-cluster workload placement for NVIDIA Run:ai. Submit a workload once; it g
 
 ## How placement works
 
-A cluster is **eligible** if it is connected, the project exists on it, it is not excluded by policy, and the request does not exceed the project's GPU limit there. Eligible clusters are ranked by:
+A cluster is **eligible** if it is connected, the project exists on it (or `AUTO_CREATE_PROJECTS` is on), it is not excluded by policy, and the request does not exceed the project's GPU limit there. Eligible clusters are ranked by:
 
 1. fits right now (known free GPUs >= requested)
 2. most free GPUs (minus GPUs reserved by recent in-flight submissions, which keeps a burst of submissions from piling onto one cluster while telemetry catches up)
 3. fewest pending workloads
 4. lowest allocation ratio
 5. name (deterministic)
+
+You can override the automatic choice: pick a cluster in the **Place on** selector (or click its card) and the workload goes there if it is eligible. With `AUTO_CREATE_PROJECTS=true` every project is usable on every connected cluster: when a workload lands on a cluster that has no project of that name, the app creates it there first (no guaranteed quota; it runs on over-quota capacity), waits for it to be ready, then submits. Per-user project visibility is not implemented yet: everyone sees all projects.
 
 If nothing fits, the workload is **queued** on the least-loaded eligible cluster (`NO_FIT_STRATEGY=queue`, default) or rejected (`reject`). The UI shows the ranking and the reason for every cluster before you submit.
 
@@ -44,6 +46,7 @@ Create the application in Run:ai under *Settings → Access → Applications*. I
 | `NO_FIT_STRATEGY` | `queue` | `queue` or `reject` |
 | `EXCLUDE_CLUSTERS` | | comma list of cluster names/uuids never to use |
 | `ALLOW_UNKNOWN_CAPACITY` | `false` | treat clusters with unknown GPU availability as available |
+| `AUTO_CREATE_PROJECTS` | `false` | use any project on any cluster: create a matching project (no guaranteed quota) on a cluster that lacks it |
 | `CAPACITY_TTL_MS` | `15000` | telemetry cache |
 | `RESERVATION_TTL_MS` | `90000` | how long a submission reserves GPUs |
 | `PORT` | `3000` | |
@@ -129,7 +132,7 @@ Request body: `{ type: workspace|training|distributed|inference, name, project, 
 
 ## Prerequisites in Run:ai
 
-- The same project name must exist on every cluster you want to schedule across (placement skips clusters that lack it).
+- Project names: without `AUTO_CREATE_PROJECTS`, the same project name must exist on every cluster you want to schedule across (placement skips clusters that lack it). With it on, the app creates missing ones on demand using its Run:ai application, which therefore needs permission to create projects.
 - The project needs GPU quota and usable **default node pools** on each cluster. The app places at the cluster level and Run:ai picks the node pool; if a project's default pool has no GPUs, Run:ai leaves the pod `Pending` ("No node in the default node-pool has GPU resources"). Fix it in Run:ai by setting the project's default node pools.
 
 ## Limits

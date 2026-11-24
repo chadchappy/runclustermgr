@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 
 const contract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).endpoints;
+const projectContract = JSON.parse(readFileSync(new URL('../contract/workload-contract.json', import.meta.url), 'utf8')).projectCreate;
 const PATH_TO_TYPE = Object.fromEntries(Object.entries(contract).map(([t, e]) => [e.path, t]));
 
 const json = (status, body) =>
@@ -17,6 +18,8 @@ export function createMockRunai({
   clientSecret = 'mock-secret',
   clusters,
   projects = ['demo-team', 'research'],
+  projectsByCluster, // optional: { <clusterUuid>: ['name', ...] } to make clusters differ
+  overQuotaOff = [], // cluster uuids that reject overQuotaWeight when creating projects
 } = {}) {
   const state = {
     tokensIssued: 0,
@@ -31,6 +34,11 @@ export function createMockRunai({
     ],
   };
   const validTokens = new Set();
+  const projectRecord = (c, name) => ({
+    id: `p-${c.uuid}-${name}`, name, clusterId: c.uuid, status: { phase: 'Ready' },
+    resources: [{ nodePool: { name: 'default' }, gpu: { deserved: Math.min(8, c.total), limit: -1 } }],
+  });
+  state.projects = state.clusters.flatMap((c) => (projectsByCluster?.[c.uuid] || projects).map((n) => projectRecord(c, n)));
   const free = (c) => c.total - c.allocated;
 
   async function fetchImpl(url, init = {}) {
@@ -79,14 +87,39 @@ export function createMockRunai({
     }
 
     if (path === '/api/v1/org-unit/projects' && method === 'GET') {
-      const all = state.clusters.flatMap((c) => projects.map((p) => ({
-        id: `p-${c.uuid}-${p}`, name: p, clusterId: c.uuid,
-        resources: [{ nodePool: { name: 'default' }, gpu: { deserved: Math.min(8, c.total), limit: -1 } }],
-      })));
+      const all = state.projects;
       const off = Number(u.searchParams.get('offset') || 0);
       const lim = Number(u.searchParams.get('limit') || 100);
       const page = all.slice(off, off + lim);
       return json(200, { projects: page, ...(off + lim < all.length ? { next: off + lim } : {}) });
+    }
+
+    if (path === '/api/v1/org-unit/projects' && method === 'POST') {
+      const bad = [];
+      for (const k of Object.keys(body || {})) if (!projectContract.topKeys.includes(k)) bad.push(k);
+      for (const k of projectContract.topRequired) if (body?.[k] === undefined) bad.push(`missing:${k}`);
+      for (const r of body?.resources || []) {
+        for (const k of Object.keys(r)) if (!projectContract.resourceKeys.includes(k)) bad.push(`resources.${k}`);
+        for (const k of Object.keys(r.gpu || {})) if (!projectContract.gpuKeys.includes(k)) bad.push(`resources.gpu.${k}`);
+        for (const k of Object.keys(r.nodePool || {})) if (!projectContract.nodePoolKeys.includes(k)) bad.push(`resources.nodePool.${k}`);
+        for (const k of projectContract.nodePoolRequired) if (r.nodePool?.[k] === undefined) bad.push(`missing:resources.nodePool.${k}`);
+      }
+      if (bad.length) return json(400, { code: 400, message: `invalid request: ${bad.join(', ')}` });
+      const cluster = state.clusters.find((c) => c.uuid === body.clusterId);
+      if (!cluster) return json(400, { code: 400, message: 'unknown clusterId' });
+      if (state.failProjectCreate?.[cluster.uuid]) return json(state.failProjectCreate[cluster.uuid], { code: state.failProjectCreate[cluster.uuid], message: 'injected project failure' });
+      if (overQuotaOff.includes(cluster.uuid) && body.resources.some((r) => r.gpu?.overQuotaWeight !== undefined)) {
+        return json(400, { code: 400, message: 'failed to create project: over quota feature is off. OverQuotaWeight should be deserved or empty in index 0' });
+      }
+      if (state.projects.some((p) => p.clusterId === cluster.uuid && p.name === body.name)) return json(409, { code: 409, message: 'project already exists' });
+      const rec = projectRecord(cluster, body.name);
+      state.projects.push(rec);
+      state.projectCreates = (state.projectCreates || 0) + 1;
+      return json(201, rec);
+    }
+
+    if (path === '/api/v1/node-pools' && method === 'GET') {
+      return json(200, { nodepools: state.clusters.map((c) => ({ id: `np-${c.uuid}`, name: 'default', clusterId: c.uuid, isDefault: true })) });
     }
 
     if (path === '/api/v1/workloads' && method === 'GET') {
@@ -135,7 +168,7 @@ export function createMockRunai({
         actualPhase: phase, desiredPhase: 'Running', createdAt: new Date().toISOString(),
         // list-item fields (as returned by GET /api/v1/workloads)
         id: `wl-${state.workloads.length + 1}`, type: type[0].toUpperCase() + type.slice(1), phase,
-        projectName: projects.find((n) => body.projectId.endsWith(`-${n}`)) || null,
+        projectName: state.projects.find((p) => p.id === body.projectId)?.name || null,
         allocatedResources: { gpu: phase === 'Running' ? need : 0 },
       };
       state.workloads.push(wl);
