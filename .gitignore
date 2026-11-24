@@ -4,3 +4,8 @@ node_modules/
 !.env.example
 *.log
 .DS_Store
+
+# Per-environment deploy settings stay local (they name your clusters, registry and app).
+# Copy environments/example.env to environments/<name>.env and edit.
+environments/*.env
+!environments/example.env

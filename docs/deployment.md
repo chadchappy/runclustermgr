@@ -1,5 +1,7 @@
 # Deployment guide
 
+> New here? Start with the [customer guide](customer-guide.md), a step-by-step install. This page is the reference for every option.
+
 ## 1. Prerequisites
 
 - A Run:ai control plane (3.0+) with the clusters you want to schedule across registered in it.

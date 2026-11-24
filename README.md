@@ -65,16 +65,18 @@ Create the application in Run:ai under *Settings → Access → Applications*. I
 
 ## Deploy to Kubernetes
 
-Each environment is one small env file (no secrets in it):
+**Installing for your own clusters?** Follow the step-by-step [customer guide](docs/customer-guide.md): create a Run:ai application, build the image, fill in one env file, run one script.
+
+The short version:
 
 ```bash
 cp environments/example.env environments/prod.env     # edit: context, image, control plane, app name
-echo -n '<application secret>' > ~/.secrets/clustermgr.secret && chmod 600 ~/.secrets/clustermgr.secret
+printf '%s' '<application secret>' > ~/.secrets/clustermgr.secret && chmod 600 ~/.secrets/clustermgr.secret
 export KUBECONFIG=~/.kube/config-prod
 scripts/deploy.sh environments/prod.env
 ```
 
-That is the whole setup. The script:
+The script:
 
 - **refuses to run** unless the current kube context equals `EXPECT_CONTEXT`
 - stores credentials in a Kubernetes Secret (never in git or manifests) and generates the UI password once
@@ -82,7 +84,7 @@ That is the whole setup. The script:
 - copies an existing TLS secret (`TLS_SECRET_SOURCE`) and refreshes an ECR pull secret (`ECR_REGION`) if you ask
 - works without any ingress (`INGRESS=0`): `kubectl -n clustermgr port-forward svc/clustermgr 3000:80`
 
-See [docs/deployment.md](docs/deployment.md) for every option, other registries, and upgrades. The checked-in [environments/prod.env](environments/prod.env) is a working example.
+`environments/*.env` is git-ignored (it names your clusters and registry); only `example.env` is tracked. See [docs/deployment.md](docs/deployment.md) for every option and registries.
 
 The pod runs a single replica (in-flight reservations live in memory), non-root, on a read-only filesystem with all capabilities dropped.
 
@@ -139,6 +141,7 @@ Request body: `{ type: workspace|training|distributed|inference, name, project, 
 
 ## More documentation
 
+- [docs/customer-guide.md](docs/customer-guide.md): start-to-finish install on your own clusters (Run:ai application, image, deploy, verify, network checklist)
 - [docs/deployment.md](docs/deployment.md): environments, registries, ingress/TLS, access control, upgrades, troubleshooting
 - [docs/architecture.md](docs/architecture.md): components, data flow, placement algorithm, failure semantics, Run:ai API usage
 
