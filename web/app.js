@@ -99,7 +99,6 @@ function readRequest({ forPreview = false } = {}) {
   opt('memory', f.memory.value.trim());
   opt('command', f.command.value.trim());
   opt('args', f.args.value.trim());
-  opt('nodePool', f.nodePool.value.trim());
   opt('pinnedClusterId', f.pin.value);
   if (type === 'distributed') { req.framework = f.framework.value; req.workers = Number(f.workers.value); }
   if (type === 'inference') opt('port', f.port.value === '' ? '' : Number(f.port.value));
